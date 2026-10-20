@@ -1,0 +1,10 @@
+@font-face{font-family:"CodeBeat UI";src:url("../assets/fonts/CodeBeatUI-Regular.woff2") format("woff2");font-weight:400;font-style:normal;font-display:block}
+@font-face{font-family:"CodeBeat UI";src:url("../assets/fonts/CodeBeatUI-Medium.woff2") format("woff2");font-weight:500;font-style:normal;font-display:block}
+@font-face{font-family:"CodeBeat UI";src:url("../assets/fonts/CodeBeatUI-SemiBold.woff2") format("woff2");font-weight:600;font-style:normal;font-display:block}
+@font-face{font-family:"CodeBeat UI";src:url("../assets/fonts/CodeBeatUI-Bold.woff2") format("woff2");font-weight:700;font-style:normal;font-display:block}
+/* Calibrated roles use actual, bundled faces rather than intermediate synthetic weights. */
+h1{font-weight:700;letter-spacing:0}
+.page-heading p{font-weight:400}
+.settings-card>h2,.detail-heading h3,.provider-title h2{font-weight:600}
+.setting-row strong{font-weight:500}
+@media(min-width:1241px){.setting-row small{font-size:13px;line-height:1.45}}

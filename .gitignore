@@ -1,0 +1,63 @@
+# Dependencies, local toolchains and build outputs
+/desktop/node_modules/
+/.build-tools/
+/desktop/dist/
+/target/
+/desktop/src-tauri/binaries/*.exe
+/desktop/src-tauri/gen/schemas/
+
+# Generated verification output (CI uploads these as artifacts)
+/docs/logs/
+/docs/screenshots/
+/desktop/playwright-report/
+/desktop/test-results/
+/desktop/coverage/
+__pycache__/
+.pytest_cache/
+*.py[cod]
+*.log
+
+# Font regeneration intermediates; desktop and notifications share web faces
+/desktop/assets/fonts/CodeBeatUI-*.ttf
+
+# Generated icons for platforms outside this Windows project
+/desktop/src-tauri/icons/android/
+/desktop/src-tauri/icons/ios/
+
+# Local databases and their sidecars; SQL upgrade scripts remain tracked
+*.db
+*.db-shm
+*.db-wal
+*.db-journal
+*.sqlite
+*.sqlite-shm
+*.sqlite-wal
+*.sqlite3
+*.sqlite3-shm
+*.sqlite3-wal
+
+# Environment and personal editor settings
+.env
+.env.*
+!.env.example
+!.env.sample
+!.env.template
+/.zed/
+/.idea/
+/.vscode/
+
+# Temporary files and OS metadata
+*.tmp
+*.bak
+*.orig
+*.rej
+*~
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Local copies from earlier workspace layouts
+/node_modules/
+/dist/
+/playwright-report/
+/test-results/

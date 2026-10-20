@@ -1,0 +1,86 @@
+name: Windows verification and NSIS
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  windows:
+    runs-on: windows-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: desktop/package-lock.json
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@v2
+      - name: Install locked frontend dependencies
+        run: npm --prefix desktop ci
+      - name: Build independent runner
+        shell: pwsh
+        run: |
+          cargo build --locked -p codebeat-runner
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          New-Item -ItemType Directory -Force desktop/src-tauri/binaries | Out-Null
+          Copy-Item target/debug/codebeat-runner.exe desktop/src-tauri/binaries/codebeat-runner.exe
+      - name: Format, unit and integration tests, lint, frontend build
+        shell: pwsh
+        run: ./scripts/verify.ps1
+      - name: Browser interaction tests against production build
+        working-directory: desktop
+        run: |
+          npx playwright install chromium
+          npx playwright test
+      - name: Native notification layout and button tests
+        shell: pwsh
+        run: |
+          cargo build --locked -p codebeat --features tauri/custom-protocol
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          ./scripts/test-notification.ps1
+      - name: Native pretrigger scheduler registration and cleanup
+        run: powershell -NoProfile -ExecutionPolicy Bypass -File scripts/test-pretrigger.ps1
+      - name: Build release and installer
+        shell: pwsh
+        run: ./scripts/package.ps1
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: codebeat-windows-x64
+          path: |
+            target/release/bundle/nsis/codebeat-Setup-x64.exe
+            target/release/bundle/nsis/SHA256SUMS
+            docs/logs/*.txt
+            docs/logs/tray-adjust-*.json
+            docs/logs/structure-*.json
+            docs/logs/display-inbox-*.json
+            docs/logs/pretrigger-*.json
+            docs/logs/usage-retry-*.json
+            docs/screenshots/usage-retry/*.png
+            docs/logs/awo-*.json
+            docs/screenshots/awo/*.png
+            docs/screenshots/pretrigger/*.png
+            docs/screenshots/tray/*.png
+            docs/screenshots/display-inbox/*.png
+            docs/screenshots/settings-auto/*.png
+            docs/screenshots/usage-aligned.png
+            docs/screenshots/session-menu/*.png
+            docs/screenshots/branding-i18n/*.png
+            docs/screenshots/sidebar-logo/*.png
+            docs/screenshots/task-table/*.png
+            docs/screenshots/session-pagination/*.png
+            docs/screenshots/window-corners/*.png
+            docs/screenshots/task-editor-reference/*.png
+            docs/screenshots/redesign/*.png
+            docs/screenshots/notifications/*.png
+            desktop/playwright-report/
+            docs/ARCHITECTURE.md
+            docs/FEATURES.md
+            docs/DELIVERY.md
+            CHANGELOG.md
+          if-no-files-found: warn

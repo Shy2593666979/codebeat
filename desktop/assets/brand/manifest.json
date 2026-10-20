@@ -1,0 +1,197 @@
+{
+  "source": "docs/images/logo.svg",
+  "treatment": "Original frontend/source SVG unchanged. Native-only centered viewBox 120 120 784 784 enlarges artwork by another 10.20% over the prior 864 viewBox, keeping transparent safety margin and identical paths/color.",
+  "files": [
+    {
+      "path": "docs/images/logo.svg",
+      "sha256": "68914447463118540eeb6a8207d274b1181aabd7f45b899a34430443e71cb89f",
+      "bytes": 1525
+    },
+    {
+      "path": "desktop/assets/brand/app-icon.svg",
+      "sha256": "68914447463118540eeb6a8207d274b1181aabd7f45b899a34430443e71cb89f",
+      "bytes": 1525
+    },
+    {
+      "path": "desktop/src/assets/app-logo.svg",
+      "sha256": "68914447463118540eeb6a8207d274b1181aabd7f45b899a34430443e71cb89f",
+      "bytes": 1525
+    },
+    {
+      "path": "desktop/src/assets/app-logo.png",
+      "sha256": "fbec14e5c9a536170ffd16f0a954dbaced289fcdbf3a1d6e8ee9f3b20ba05c90",
+      "bytes": 2158,
+      "size": [
+        128,
+        128
+      ]
+    },
+    {
+      "path": "desktop/assets/brand/logo.png",
+      "sha256": "ad43bd2c659b057dbf0ea8959383bf538d4453e0b15e8455da7f6cce3885e741",
+      "bytes": 9497,
+      "size": [
+        512,
+        512
+      ]
+    },
+    {
+      "path": "desktop/src-tauri/icons/128x128.png",
+      "sha256": "26a49a62ec4a7cedc2076cf62ac749cba5e8860fd50a9aa4f8393cf87da6cfe2",
+      "bytes": 2686,
+      "size": [
+        128,
+        128
+      ]
+    },
+    {
+      "path": "desktop/src-tauri/icons/128x128@2x.png",
+      "sha256": "bd501831f847b3196bfc91c0e0215f42f3182437816f963cb00a0cbc37ecff6b",
+      "bytes": 5479,
+      "size": [
+        256,
+        256
+      ]
+    },
+    {
+      "path": "desktop/src-tauri/icons/32x32.png",
+      "sha256": "b72ea2c5adf86b948a1389ba36e8e9bbfd44e58d2afff9b13595aea870ebec0c",
+      "bytes": 796,
+      "size": [
+        32,
+        32
+      ]
+    },
+    {
+      "path": "desktop/src-tauri/icons/64x64.png",
+      "sha256": "47f154e6df323f90b7308999dc0768e91bc929b0b53ebf748c4ada04968f34c6",
+      "bytes": 1414,
+      "size": [
+        64,
+        64
+      ]
+    },
+    {
+      "path": "desktop/src-tauri/icons/icon.icns",
+      "sha256": "94c11a1e8b1fbc545e83cc379e955518c50d1b645bc4b53712b857a48c043a4f",
+      "bytes": 67346
+    },
+    {
+      "path": "desktop/src-tauri/icons/icon.ico",
+      "sha256": "c607e8af9c2716357b7aef2ee03b2c160f1ab1d8a8e989fd14d70e88a4472127",
+      "bytes": 11837
+    },
+    {
+      "path": "desktop/src-tauri/icons/icon.png",
+      "sha256": "9c5a97102a0c3f8b6c08653f7b992ad37fc2c50486606a99350c1cb4ddc0d267",
+      "bytes": 11504,
+      "size": [
+        512,
+        512
+      ]
+    },
+    {
+      "path": "desktop/src-tauri/icons/Square107x107Logo.png",
+      "sha256": "bbaf8ea4a3ba03ab984848643bb2d2a141e9dbde84fc0a5f9f7ce65b57e0288d",
+      "bytes": 2258,
+      "size": [
+        107,
+        107
+      ]
+    },
+    {
+      "path": "desktop/src-tauri/icons/Square142x142Logo.png",
+      "sha256": "44b102146ae5ae691404fb9b3570fad299d95a772f9681be6e2d74f1067bef8c",
+      "bytes": 2982,
+      "size": [
+        142,
+        142
+      ]
+    },
+    {
+      "path": "desktop/src-tauri/icons/Square150x150Logo.png",
+      "sha256": "7ce8fb4152a1ed9b30931d727dbe3f09a47a81187170f216a326ba17153139f2",
+      "bytes": 3152,
+      "size": [
+        150,
+        150
+      ]
+    },
+    {
+      "path": "desktop/src-tauri/icons/Square284x284Logo.png",
+      "sha256": "08dfc52af22de9a4d4e70a34adc9459b2a7f22dded5de4b0a129ae9119b1f633",
+      "bytes": 6050,
+      "size": [
+        284,
+        284
+      ]
+    },
+    {
+      "path": "desktop/src-tauri/icons/Square30x30Logo.png",
+      "sha256": "a5d3a45ec4567e1f6d45e9ec34ab191011628179c8a34c20372aa903a864772b",
+      "bytes": 721,
+      "size": [
+        30,
+        30
+      ]
+    },
+    {
+      "path": "desktop/src-tauri/icons/Square310x310Logo.png",
+      "sha256": "c5fc07763b0230623b48652f4cdc1f38f9201aae140b42abfeb09269d4c90f38",
+      "bytes": 6596,
+      "size": [
+        310,
+        310
+      ]
+    },
+    {
+      "path": "desktop/src-tauri/icons/Square44x44Logo.png",
+      "sha256": "01946866fcd45bf7d94660f6752e13196bb82a99228e32803383e169f73159c1",
+      "bytes": 1004,
+      "size": [
+        44,
+        44
+      ]
+    },
+    {
+      "path": "desktop/src-tauri/icons/Square71x71Logo.png",
+      "sha256": "0b6591546afe359cdd3d79d9acf5f11e5f06968d325ad376c0d6f8ce538e7c2f",
+      "bytes": 1535,
+      "size": [
+        71,
+        71
+      ]
+    },
+    {
+      "path": "desktop/src-tauri/icons/Square89x89Logo.png",
+      "sha256": "4f904187fd70511d904f51f97141a6fa2b115282c6190ab47bda780daea9a9af",
+      "bytes": 1868,
+      "size": [
+        89,
+        89
+      ]
+    },
+    {
+      "path": "desktop/src-tauri/icons/StoreLogo.png",
+      "sha256": "c6e68d169402ca16cd42cd3922c5d09dc4579f3d198c4fed2245e0c2fe182388",
+      "bytes": 1140,
+      "size": [
+        50,
+        50
+      ]
+    },
+    {
+      "path": "desktop/assets/brand/native-icon.svg",
+      "sha256": "99987710536fbd1c3f6784f04df405b03bcd7018fa6c1478780551429f3e604f",
+      "bytes": 1527
+    }
+  ],
+  "color": "#111032",
+  "native_source": "desktop/assets/brand/native-icon.svg",
+  "native_viewbox": [
+    120,
+    120,
+    784,
+    784
+  ]
+}

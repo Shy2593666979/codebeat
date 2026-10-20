@@ -1,0 +1,9 @@
+/* The same control adapts to filters, settings rows and full-width form fields. */
+.panel-heading>.select-wrapper{width:150px;flex-shrink:0}
+.setting-row>.select-wrapper{width:155px;flex-shrink:0;margin-left:auto}
+.setting-row>.select-wrapper .select-control{font-size:12px}
+.session-toolbar>.select-wrapper{width:155px;flex-shrink:0}
+.project-filter>.select-wrapper{flex:1;min-width:0}.project-filter{padding-right:0}.project-filter .select-control{border:0;background:transparent}
+.filter-bar>.select-wrapper{width:190px}
+.editor-fields-column .select-wrapper,.dialog-body>.select-wrapper{width:100%}
+@media(max-width:640px){.setting-row>.select-wrapper{width:115px}.setting-row>.select-wrapper .select-control{font-size:11px;padding:7px 9px}.session-toolbar>.select-wrapper{width:140px;flex:1}.panel-heading>.select-wrapper{width:125px}}

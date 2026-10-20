@@ -1,0 +1,61 @@
+{
+  "license_url": "https://raw.githubusercontent.com/google/fonts/bf7c667ae010c0ffb39944ae85097021478cb91d/ofl/notosanssc/OFL.txt",
+  "url": "https://raw.githubusercontent.com/google/fonts/bf7c667ae010c0ffb39944ae85097021478cb91d/ofl/notosanssc/NotoSansSC%5Bwght%5D.ttf",
+  "commit": "bf7c667ae010c0ffb39944ae85097021478cb91d",
+  "sha256": "a3041811a78c361b1de50f953c805e0244951c21c5bd412f7232ef0d899af0da",
+  "family": "CodeBeat UI",
+  "derived_from": "Noto Sans SC",
+  "fonttools_version": "4.67.0",
+  "woff2_brotli_quality": 9,
+  "outputs": [
+    {
+      "file": "CodeBeatUI-Regular.ttf",
+      "weight": 400,
+      "bytes": 10595828,
+      "sha256": "96a5b08e65745567bb0fc683a50185e18944d65631055079dde6dd04ce8d7ca1"
+    },
+    {
+      "file": "CodeBeatUI-Regular.woff2",
+      "weight": 400,
+      "bytes": 4390388,
+      "sha256": "05ded2cfe8d9adabf4518ebaec542884b6d604774b9e2548fd02072a113f998f"
+    },
+    {
+      "file": "CodeBeatUI-Medium.ttf",
+      "weight": 500,
+      "bytes": 10588996,
+      "sha256": "4633aef5ebad676308812375f10e4015527485017908c97d81dc7250e21f8a31"
+    },
+    {
+      "file": "CodeBeatUI-Medium.woff2",
+      "weight": 500,
+      "bytes": 4469852,
+      "sha256": "473d63a1fd1e50fe93919da8b7fce3aa617d0d61422dc9fe37b14127b1e7ccc1"
+    },
+    {
+      "file": "CodeBeatUI-SemiBold.ttf",
+      "weight": 600,
+      "bytes": 10585476,
+      "sha256": "f673c9b0de3f0e767497aa4b334802f64fed323490cbbba4e01265ef80d799c2"
+    },
+    {
+      "file": "CodeBeatUI-SemiBold.woff2",
+      "weight": 600,
+      "bytes": 4487372,
+      "sha256": "5fe013cc9ce69aeec410bdc38d4c5688aac8da23fcca12212c5d1303e64bfa50"
+    },
+    {
+      "file": "CodeBeatUI-Bold.ttf",
+      "weight": 700,
+      "bytes": 10585356,
+      "sha256": "8ca2e326b67786084b9edec498e83fdc38488da898d50445a1d2bfb4915064cd"
+    },
+    {
+      "file": "CodeBeatUI-Bold.woff2",
+      "weight": 700,
+      "bytes": 4522300,
+      "sha256": "1dd6ffd7cf075f17bf18af416ba39ca548ba1bf79bad2f75b118718959591fc6"
+    }
+  ],
+  "native_faces": []
+}

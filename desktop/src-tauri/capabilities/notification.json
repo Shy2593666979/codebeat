@@ -1,0 +1,7 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "notification",
+  "description": "Independent local notification helper; no shell or filesystem permissions.",
+  "windows": ["notification"],
+  "permissions": ["core:default"]
+}

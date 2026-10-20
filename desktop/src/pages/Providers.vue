@@ -1,0 +1,9 @@
+<script setup lang="ts">
+import {tr} from '../composables/i18n'
+import {RotateCw,ExternalLink,CheckCircle2,Terminal,ShieldCheck} from 'lucide-vue-next'
+import UsageCard from '../components/UsageCard.vue'
+import {store,refresh} from '../stores/store'
+import {providerName} from '../services/api'
+import {t} from '../composables/i18n'
+</script>
+<template><div class="page-heading"><div><div class="eyebrow">CONNECTED TOOLS</div><h1>{{t.providers}}<span class="heading-dot">.</span></h1><p>{{t.providersSub}}</p></div><button :disabled="store.busy" @click="refresh"><RotateCw :size="15" :class="{spin:store.busy}"/>{{t.refresh}}</button></div><div class="usage-grid"><UsageCard provider="codex"/><UsageCard provider="claude_code"/></div><section class="panel section-panel"><h3><Terminal :size="19"/>{{tr("连接诊断")}}</h3><p v-if="!store.providers.length" class="muted">{{tr("在桌面应用中检测工具版本、安装位置和官方登录状态。")}}</p><article v-for="p in store.providers" :key="p.id" class="provider-detail"><div><h3>{{providerName(p.id)}}<span class="badge" :class="{green:p.status==='ready'}">{{p.status}}</span></h3><p>{{tr(p.message)}}</p><dl class="detail-list"><dt>{{tr("版本")}}</dt><dd>{{p.version||tr("未知")}}</dd><dt>{{tr("安装路径")}}</dt><dd><code>{{p.executable_path||tr("未找到原生 CLI")}}</code></dd><dt>{{tr("登录状态")}}</dt><dd>{{p.auth_status}}</dd><dt>{{tr("能力")}}</dt><dd>{{Object.entries(p.capabilities).filter(([,v])=>v).map(([k])=>k).join(' · ')||tr("暂不可用")}}</dd></dl></div></article><div class="official-links"><a href="https://developers.openai.com/codex/cli/" target="_blank" rel="noreferrer">{{tr("安装 / 登录 Codex")}} <ExternalLink :size="14"/></a><a href="https://code.claude.com/docs/en/setup" target="_blank" rel="noreferrer">{{tr("安装 / 登录 Claude Code")}} <ExternalLink :size="14"/></a></div></section><div class="hint-box"><ShieldCheck :size="18"/>{{tr("凭据由官方 CLI 保管。codebeat 不读取浏览器 Cookie，不保存 API 密钥，也不自动代为登录。")}}</div></template>

@@ -1,0 +1,93 @@
+import {createRequire} from 'node:module'
+const {chromium}=createRequire(new URL('../desktop/package.json',import.meta.url))('@playwright/test')
+import {spawn} from 'node:child_process'
+import {mkdir,writeFile,readFile} from 'node:fs/promises'
+import path from 'node:path'
+import net from 'node:net'
+import {randomUUID} from 'node:crypto'
+import assert from 'node:assert/strict'
+const root=process.cwd(),temp=path.join(root,'.build-tools','desktop-inbox-'+randomUUID())
+await mkdir(temp,{recursive:true})
+await mkdir(path.join(root,'docs/logs'),{recursive:true})
+await mkdir(path.join(root,'docs/screenshots/display-inbox'),{recursive:true})
+const port=await new Promise(resolve=>{const server=net.createServer();server.listen(0,'127.0.0.1',()=>{const port=server.address().port;server.close(()=>resolve(port))})})
+const env={...process.env,LOCALAPPDATA:temp,WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS:`--remote-debugging-port=${port}`}
+const exe=path.join(root,'target/release/codebeat.exe')
+let stderr='',browser
+const app=spawn(exe,['--background'],{env,windowsHide:true,stdio:['ignore','ignore','pipe']})
+app.stderr.on('data',chunk=>stderr+=chunk)
+const delay=ms=>new Promise(resolve=>setTimeout(resolve,ms))
+async function until(check,label){for(let i=0;i<80;i++){try{const result=await check();if(result)return result}catch{}await delay(250)}throw Error('Timed out: '+label)}
+try{
+ await until(async()=>{const response=await fetch(`http://127.0.0.1:${port}/json/version`);return response.ok},'WebView2 debug endpoint')
+ browser=await chromium.connectOverCDP(`http://127.0.0.1:${port}`)
+ const pages=()=>browser.contexts().flatMap(context=>context.pages())
+ const main=await until(()=>pages().find(page=>!page.url().includes('/tray')&&page.url().includes('tauri')),'main WebView')
+ await main.waitForFunction(()=>!!window.__TAURI_INTERNALS__)
+ const invoke=(page,command,args={})=>page.evaluate(({command,args})=>window.__TAURI_INTERNALS__.invoke(command,args),{command,args})
+ assert.equal(await invoke(main,'plugin:window|is_visible',{label:'main'}),false)
+ const id=randomUUID()
+ await invoke(main,'publish_notice',{id,title:'Native inbox test',message:'Isolated desktop message',kind:'info'})
+ await delay(1400)
+ assert.equal((await invoke(main,'get_pending_notices')).length,1)
+ const reopen=spawn(exe,['--open-tray'],{env,windowsHide:true,stdio:'ignore'})
+ await new Promise(resolve=>reopen.once('exit',resolve))
+ const tray=await until(()=>pages().find(page=>page.url().includes('/tray')),'tray WebView')
+ assert.equal((await invoke(tray,'get_tray_snapshot')).inbox.length,1)
+ await tray.locator('.tray-menu').waitFor({state:'visible'})
+ assert.equal(await tray.locator('.tray-submenu').count(),0)
+ const initialTrayLayout=(await invoke(tray,'get_tray_snapshot')).layout
+ const menuBounds=await tray.locator('.tray-menu').boundingBox()
+ assert.ok(Math.abs(menuBounds.width-326*initialTrayLayout.scale)<2)
+ const statusRow=tray.getByRole('menuitem',{name:'查看运行状态',exact:true})
+ await statusRow.hover()
+ await tray.locator('.tray-submenu').waitFor({state:'visible'})
+ const alignment=await tray.evaluate(()=>{
+  const popup=document.querySelector('.tray-submenu'),row=document.querySelector('[data-tray-section="status"]'),stage=document.querySelector('.tray-stage')
+  const bounds=popup.getBoundingClientRect(),target=row.getBoundingClientRect(),zoom=Number(getComputedStyle(stage).zoom),pointer=getComputedStyle(popup,':before')
+  return Math.abs(bounds.top+Number.parseFloat(pointer.top)*zoom+6.5*zoom-target.top-target.height/2)
+ })
+ assert.ok(alignment<2)
+ await tray.getByRole('menuitem',{name:'打开主界面',exact:true}).hover()
+ await until(async()=>await tray.locator('.tray-submenu').count()===0,'flyout closes away from status row')
+ assert.equal(await invoke(tray,'plugin:window|is_visible',{label:'tray'}),true)
+ assert.equal((await invoke(main,'get_pending_notices')).length,1)
+ await invoke(tray,'ignore_all_notices')
+ assert.equal((await invoke(main,'get_pending_notices')).length,0)
+ assert.equal(await invoke(tray,'plugin:window|is_visible',{label:'tray'}),false)
+ const next=randomUUID()
+ await invoke(main,'publish_notice',{id:next,title:'Native inbox reopened',message:'Show in main window and acknowledge',kind:'success'})
+ await invoke(tray,'open_notice',{id:next})
+ await main.bringToFront()
+ await until(async()=>!(await invoke(main,'get_pending_notices')).length,'visible notice acknowledgement')
+ assert.equal(await invoke(main,'plugin:window|is_visible',{label:'main'}),true)
+ await until(async()=>await main.locator('.feedback-card').count()===0,'two-second card close')
+ const scale=await invoke(main,'set_display_scale',{value:1.1})
+ assert.equal(scale.selected,1.1)
+ assert.equal((await invoke(main,'get_display_layout')).selected,1.1)
+ await delay(500)
+ const viewport=await main.evaluate(()=>({width:innerWidth,height:innerHeight,dpr:devicePixelRatio,scrollWidth:document.documentElement.scrollWidth}))
+ const nativeSize=await invoke(main,'plugin:window|inner_size',{label:'main'})
+ assert.ok(Math.abs(nativeSize.width/viewport.dpr-viewport.width)<2)
+ assert.ok(viewport.scrollWidth<=viewport.width)
+ await invoke(main,'save_window_layout')
+ const preferences=JSON.parse(await readFile(path.join(temp,'codebeat/window-layout.json'),'utf8'))
+ assert.ok(Object.values(preferences).some(preference=>preference.scale===1.1&&preference.width>=1024&&preference.height>=700))
+ const capture=await main.context().newCDPSession(main)
+ const screenshot=await capture.send('Page.captureScreenshot',{format:'png',fromSurface:true})
+ await writeFile('docs/screenshots/display-inbox/native-main.png',Buffer.from(screenshot.data,'base64'))
+ await capture.detach()
+ const reopenScaled=spawn(exe,['--open-tray'],{env,windowsHide:true,stdio:'ignore'})
+ await new Promise(resolve=>reopenScaled.once('exit',resolve))
+ const scaledTray=(await invoke(tray,'get_tray_snapshot')).layout
+ assert.ok(Math.abs(scaledTray.scale-scale.effective*.85)<.001)
+ assert.equal(await tray.locator('.tray-submenu').count(),0)
+ assert.equal(stderr,'')
+ const result={passed:true,isolated_data:temp,real_native_ipc:true,viewport,native_size:nativeSize,background_retained:true,tray_snapshot_contains_notice:true,tray_menu_initially_closed:true,tray_status_hover_alignment:true,tray_follows_display_scale:true,ignore_all_hides_native_tray:true,open_notice_shows_main:true,fully_visible_notice_acknowledged:true,two_second_close:true,scale_applies_and_saves:true,physical_tray_mouse_hover_and_blink_pixels:'not synthesized',stderr_bytes:stderr.length}
+ await writeFile('docs/logs/display-inbox-native-ipc.json',JSON.stringify(result,null,2))
+ console.log(JSON.stringify(result,null,2))
+}finally{
+ if(browser)await browser.close()
+ app.kill()
+ await writeFile('docs/logs/display-inbox-native-ipc-stderr.txt',stderr)
+}

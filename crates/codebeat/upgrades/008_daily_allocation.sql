@@ -1,0 +1,4 @@
+BEGIN IMMEDIATE;
+DELETE FROM awo_runtime;
+PRAGMA user_version=8;
+COMMIT;

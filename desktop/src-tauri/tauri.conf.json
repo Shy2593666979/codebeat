@@ -1,0 +1,84 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "CodeBeat",
+  "version": "0.1.0",
+  "identifier": "org.codebeat.app",
+  "build": {
+    "beforeDevCommand": "npm run dev",
+    "beforeBuildCommand": "npm run build",
+    "devUrl": "http://127.0.0.1:1420",
+    "frontendDist": "../dist"
+  },
+  "app": {
+    "windows": [
+      {
+        "label": "main",
+        "title": "CodeBeat",
+        "width": 1200,
+        "height": 800,
+        "minWidth": 1024,
+        "minHeight": 700,
+        "decorations": false,
+        "center": true,
+        "backgroundColor": "#00000000",
+        "transparent": true,
+        "visible": false
+      },
+      {
+        "label": "tray",
+        "title": "CodeBeat 托盘",
+        "url": "index.html#/tray",
+        "width": 515,
+        "height": 527,
+        "visible": false,
+        "focus": false,
+        "decorations": false,
+        "transparent": true,
+        "shadow": false,
+        "resizable": false,
+        "skipTaskbar": true,
+        "alwaysOnTop": true,
+        "backgroundColor": "#00000000"
+      }
+    ],
+    "security": {
+      "csp": "default-src 'self'; img-src 'self' asset: http://asset.localhost; style-src 'self' 'unsafe-inline'; connect-src ipc: http://ipc.localhost; script-src 'self'"
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": [
+      "nsis"
+    ],
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/icon.ico"
+    ],
+    "resources": {
+      "binaries/codebeat-runner.exe": "codebeat-runner.exe",
+      "../../LICENSE": "LICENSE",
+      "../../docs/PRIVACY.md": "PRIVACY.md",
+      "../../docs/THIRD_PARTY.md": "THIRD_PARTY.md",
+      "../assets/fonts/OFL.txt": "fonts/OFL.txt",
+      "../assets/fonts/source.json": "fonts/source.json"
+    },
+    "windows": {
+      "webviewInstallMode": {
+        "type": "downloadBootstrapper",
+        "silent": false
+      },
+      "nsis": {
+        "installMode": "currentUser",
+        "languages": [
+          "SimpChinese",
+          "English"
+        ],
+        "displayLanguageSelector": true,
+        "installerHooks": "installer/hooks.nsh",
+        "installerIcon": "icons/icon.ico",
+        "uninstallerIcon": "icons/icon.ico"
+      }
+    }
+  }
+}
