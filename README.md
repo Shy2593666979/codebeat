@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="docs/images/logo.svg" width="80" alt="CodeBeat 标志">
+  <img src="docs/images/logo.png" width="80" alt="CodeBeat 标志">
 </p>
 
 <h1 align="center">CodeBeat</h1>
