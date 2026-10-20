@@ -177,7 +177,9 @@ cargo build --locked -p codebeat --features tauri/custom-protocol,notification-t
 ./scripts/test-notification.ps1
 ```
 
-原生通知回归显式启用 `notification-test`：测试端口和隔离目录通过 WebView2 API 设置，避免管理员 CI 进程忽略 `WEBVIEW2_*` 环境覆盖。正式打包不启用此特性。就绪超时按收到 `READY` 的时刻判断，CDP 探测有独立超时，启动与失败诊断写入 `docs/logs/notification-helper.jsonl` 并随 CI 产物上传。
+原生通知回归仅在本地交互式 Windows 桌面手动运行，不作为 GitHub Actions 的检查步骤。脚本显式启用 `notification-test`：测试端口和隔离目录通过 WebView2 API 设置，避免管理员进程忽略 `WEBVIEW2_*` 环境覆盖；正式打包不启用此特性。就绪超时按收到 `READY` 的时刻判断，CDP 探测有独立超时，启动与失败诊断写入本地 `docs/logs/notification-helper.jsonl`。
+
+常规 CI 保留前后端单元与集成测试、格式和 Clippy、无界面浏览器功能回归、Windows 任务计划注册验证及 NSIS 打包。README 宣传截图不在 CI 生成；产物仅上传安装包、校验与构建信息、验证日志和浏览器测试报告，不重复上传仓库文档与各组展示截图。
 
 常规 Rust 测试包含隔离注册表键的自启往返、DACL/SID/继承检查。显式调度测试检查四类任务注册后的 XML、公共注册接口和电源诊断，并清理临时任务。通知脚本使用临时数据目录、隔离 WebView2 profile 和唯一确认文件，通过仅本机的 DevTools 连接验证实际渲染、READY、文本、已读计时、排队和关闭；不会启动正常桌面模式或发送模型请求。截图保存在 `docs/screenshots/notifications/rust-helper-*.png`。
 

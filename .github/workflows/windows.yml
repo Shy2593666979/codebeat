@@ -39,12 +39,6 @@ jobs:
         run: |
           npx playwright install chromium
           npx playwright test
-      - name: Native notification layout and button tests
-        shell: pwsh
-        run: |
-          cargo build --locked -p codebeat --features tauri/custom-protocol,notification-test
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          ./scripts/test-notification.ps1
       - name: Native pretrigger scheduler registration and cleanup
         run: powershell -NoProfile -ExecutionPolicy Bypass -File scripts/test-pretrigger.ps1
       - name: Build release and installer
@@ -57,33 +51,9 @@ jobs:
           path: |
             target/release/bundle/nsis/codebeat-Setup-x64.exe
             target/release/bundle/nsis/SHA256SUMS
+            target/release/bundle/nsis/build-info.json
             docs/logs/*.txt
-            docs/logs/notification-helper.jsonl
-            docs/logs/tray-adjust-*.json
-            docs/logs/structure-*.json
-            docs/logs/display-inbox-*.json
-            docs/logs/pretrigger-*.json
-            docs/logs/usage-retry-*.json
-            docs/screenshots/usage-retry/*.png
-            docs/logs/awo-*.json
-            docs/screenshots/awo/*.png
-            docs/screenshots/pretrigger/*.png
-            docs/screenshots/tray/*.png
-            docs/screenshots/display-inbox/*.png
-            docs/screenshots/settings-auto/*.png
-            docs/screenshots/usage-aligned.png
-            docs/screenshots/session-menu/*.png
-            docs/screenshots/branding-i18n/*.png
-            docs/screenshots/sidebar-logo/*.png
-            docs/screenshots/task-table/*.png
-            docs/screenshots/session-pagination/*.png
-            docs/screenshots/window-corners/*.png
-            docs/screenshots/task-editor-reference/*.png
-            docs/screenshots/redesign/*.png
-            docs/screenshots/notifications/*.png
+            docs/logs/*.json
             desktop/playwright-report/
-            docs/ARCHITECTURE.md
-            docs/FEATURES.md
-            docs/DELIVERY.md
-            CHANGELOG.md
+            desktop/test-results/
           if-no-files-found: warn

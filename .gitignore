@@ -9,6 +9,7 @@
 # Generated verification output (CI uploads these as artifacts)
 /docs/logs/
 /docs/screenshots/
+/docs/douyin/
 /desktop/playwright-report/
 /desktop/test-results/
 /desktop/coverage/
