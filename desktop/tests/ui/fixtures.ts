@@ -3,10 +3,11 @@ import type {Page} from '@playwright/test'
 import type {Settings,Conversation,Task,UsageReport,Monitoring} from '../../src/types'
 // Strictly test-only: injected before the production bundle loads. No fixture enters src/ or the installer.
 export async function installDesktopFixture(page:Page){
+ // 日期与 UTC 快照按上海时间编写，不能继承运行 Playwright 的 Node 主机时区。
  await page.exposeFunction("__testPlanPretrigger",planPretrigger)
  const now=new Date('2026-10-16T06:40:00Z').getTime()
  await page.clock.install({time:now})
- const settings:Settings={language:'zh-CN',theme:'indigo',close_to_tray:true,autostart:true,paused:false,notifications:true,reminder_minutes:10,pretrigger_enabled:true,pretrigger:structuredClone(defaultPretrigger),authorized_roots:['/web/app','/server/api','D:\\Projects'],save_output:false,startup_minimized:true,default_time:'06:00',default_wake:true,default_catch_up:true,notify_start:true,notify_success:true,notify_failure:true,notification_sound:true,connection_interval_minutes:30,appearance:'light',paused_providers:[]}
+ const settings:Settings={language:'zh-CN',theme:'indigo',close_to_tray:true,autostart:true,paused:false,notifications:true,reminder_minutes:10,pretrigger_enabled:true,pretrigger:{...structuredClone(defaultPretrigger),timezone:'Asia/Shanghai'},authorized_roots:['/web/app','/server/api','D:\\Projects'],save_output:false,startup_minimized:true,default_time:'06:00',default_wake:true,default_catch_up:true,notify_start:true,notify_success:true,notify_failure:true,notification_sound:true,connection_interval_minutes:30,appearance:'light',paused_providers:[]}
  const names=['实现用户认证系统','重构前端组件结构','修复 API 接口问题','优化数据库查询性能','Landing page refactor','Build pipeline cleanup','添加数据可视化图表','修复移动端兼容性问题']
  const roots=['/web/app','/web/app','/server/api','/server/db','/web/landing','/infra/ci','/web/dashboard','/web/mobile']
  const sessions:Conversation[]=names.map((title,index)=>({provider:index%2===0?'codex':'claude_code',session_id:'a27dfaa2-8399-401d-9428-'+String(index).padStart(12,'0'),title,cwd:roots[index],last_updated_utc:new Date(now-index*3*3600000).toISOString(),resumable:true,source:'test fixture metadata'}))
