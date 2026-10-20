@@ -262,7 +262,7 @@ pub fn run() -> Result<()> {
             ready: queued,
         }),
     });
-    let window = tauri::WebviewWindowBuilder::new(
+    let builder = tauri::WebviewWindowBuilder::new(
         &app,
         "notification",
         tauri::WebviewUrl::App("index.html#/notification".into()),
@@ -280,8 +280,39 @@ pub fn run() -> Result<()> {
     .position(
         area.position.x as f64 / scale + (area.size.width as f64 / scale - 536.).max(0.),
         area.position.y as f64 / scale + 12. + index as f64 * 200.,
-    )
-    .build()?;
+    );
+    // 高完整性宿主会忽略 WEBVIEW2_* 环境覆盖，测试必须通过 API 传递。
+    // 此入口仅编译进显式启用 notification-test 的测试程序。
+    #[cfg(feature = "notification-test")]
+    let builder = if let Some(port) = std::env::var_os("CODEBEAT_NOTIFICATION_TEST_PORT") {
+        let port: u16 = port
+            .to_str()
+            .context("Invalid notification test port")?
+            .parse()?;
+        if port == 0 {
+            bail!("Invalid notification test port");
+        }
+        let profile = PathBuf::from(
+            std::env::var_os("CODEBEAT_NOTIFICATION_TEST_PROFILE")
+                .context("Missing notification test profile")?,
+        );
+        if !profile.is_absolute() {
+            bail!("Notification test profile must be absolute");
+        }
+        std::fs::create_dir_all(&profile)?;
+        let builder = builder
+            .additional_browser_args(&format!(
+                "--remote-debugging-port={port} --remote-debugging-address=127.0.0.1"
+            ))
+            .data_directory(profile);
+        let mut stdout = std::io::stdout().lock();
+        writeln!(stdout, "NOTIFICATION_TEST_CDP {port}")?;
+        stdout.flush()?;
+        builder
+    } else {
+        builder
+    };
+    let window = builder.build()?;
     // 由 Rust 线程处理外部关闭和已读计时，避免 WebView 节流影响关闭时机。
     let handle = app.handle().clone();
     std::thread::spawn(move || loop {

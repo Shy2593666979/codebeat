@@ -42,7 +42,7 @@ jobs:
       - name: Native notification layout and button tests
         shell: pwsh
         run: |
-          cargo build --locked -p codebeat --features tauri/custom-protocol
+          cargo build --locked -p codebeat --features tauri/custom-protocol,notification-test
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           ./scripts/test-notification.ps1
       - name: Native pretrigger scheduler registration and cleanup
@@ -58,6 +58,7 @@ jobs:
             target/release/bundle/nsis/codebeat-Setup-x64.exe
             target/release/bundle/nsis/SHA256SUMS
             docs/logs/*.txt
+            docs/logs/notification-helper.jsonl
             docs/logs/tray-adjust-*.json
             docs/logs/structure-*.json
             docs/logs/display-inbox-*.json

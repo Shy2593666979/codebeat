@@ -4,6 +4,9 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 default-run = "codebeat"
+[features]
+# 仅用于隔离的原生通知回归；正式打包不启用调试端口。
+notification-test = []
 [build-dependencies]
 tauri-build = { version = "~2.7", features = [] }
 [dependencies]

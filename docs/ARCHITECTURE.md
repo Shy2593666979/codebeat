@@ -173,9 +173,11 @@ npm --prefix desktop run test:ui
 ./scripts/test-pretrigger.ps1
 # 嵌入前端，测试真实独立 WebView2 进程。
 npm --prefix desktop run build
-cargo build --locked -p codebeat --features tauri/custom-protocol
+cargo build --locked -p codebeat --features tauri/custom-protocol,notification-test
 ./scripts/test-notification.ps1
 ```
+
+原生通知回归显式启用 `notification-test`：测试端口和隔离目录通过 WebView2 API 设置，避免管理员 CI 进程忽略 `WEBVIEW2_*` 环境覆盖。正式打包不启用此特性。就绪超时按收到 `READY` 的时刻判断，CDP 探测有独立超时，启动与失败诊断写入 `docs/logs/notification-helper.jsonl` 并随 CI 产物上传。
 
 常规 Rust 测试包含隔离注册表键的自启往返、DACL/SID/继承检查。显式调度测试检查四类任务注册后的 XML、公共注册接口和电源诊断，并清理临时任务。通知脚本使用临时数据目录、隔离 WebView2 profile 和唯一确认文件，通过仅本机的 DevTools 连接验证实际渲染、READY、文本、已读计时、排队和关闭；不会启动正常桌面模式或发送模型请求。截图保存在 `docs/screenshots/notifications/rust-helper-*.png`。
 

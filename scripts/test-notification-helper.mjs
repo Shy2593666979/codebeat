@@ -1,6 +1,6 @@
 // 测试真实 WebView2 通知进程；使用隔离配置和确认文件，不发送模型请求。
 import {spawn} from 'node:child_process'
-import {mkdtemp,mkdir,writeFile,rm,stat} from 'node:fs/promises'
+import {mkdtemp,mkdir,writeFile,appendFile,rm,stat} from 'node:fs/promises'
 import path from 'node:path'
 import os from 'node:os'
 import net from 'node:net'
@@ -14,16 +14,44 @@ const testData=await mkdtemp(path.join(os.tmpdir(),'codebeat-notice-data-test-')
 const ackDirectory=path.join(testData,'codebeat','notification-acks')
 await mkdir(ackDirectory,{recursive:true})
 await mkdir('docs/screenshots/notifications',{recursive:true})
+await mkdir('docs/logs',{recursive:true})
 const delay=ms=>new Promise(resolve=>setTimeout(resolve,ms))
 async function port(){const server=net.createServer();await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));const result=server.address().port;await new Promise(resolve=>server.close(resolve));return result}
 async function exists(file){try{await stat(file);return true}catch{return false}}
 async function helper(kind='success',page='tasks',queued=false){
  const id=randomUUID(),profile=await mkdtemp(path.join(os.tmpdir(),'codebeat-notice-test-')),debugPort=await port()
  const ack=path.join(ackDirectory,id+'.read'),dismiss=path.join(ackDirectory,id+'.dismiss')
- const started=Date.now(),child=spawn(executable,['--notification-helper'],{windowsHide:true,env:{...process.env,LOCALAPPDATA:testData,WEBVIEW2_USER_DATA_FOLDER:profile,WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS:`--remote-debugging-port=${debugPort} --remote-debugging-address=127.0.0.1`},stdio:['pipe','pipe','pipe']})
- let stdout='',stderr='';child.stdout.on('data',b=>stdout+=b);child.stderr.on('data',b=>stderr+=b)
+ // 不依赖 WEBVIEW2_* 覆盖：管理员权限下需由测试构建通过 API 配置端口和目录。
+ const env={...process.env,LOCALAPPDATA:testData,CODEBEAT_NOTIFICATION_TEST_PORT:String(debugPort),CODEBEAT_NOTIFICATION_TEST_PROFILE:profile}
+ delete env.WEBVIEW2_USER_DATA_FOLDER;delete env.WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS
+ const started=Date.now(),child=spawn(executable,['--notification-helper'],{windowsHide:true,env,stdio:['pipe','pipe','pipe']})
+ let stdout='',stderr='',readyAt,spawnError,lastConnectionError=''
+ child.stdout.on('data',b=>{stdout+=b;if(readyAt===undefined&&/(^|\r?\n)READY\r?\n/.test(stdout))readyAt=Date.now()})
+ child.stderr.on('data',b=>stderr+=b)
+ child.once('error',error=>spawnError=error);child.stdin.on('error',error=>spawnError??=error)
  child.stdin.end(JSON.stringify({title:'CodeBeat 本地通知测试',body:'<script>&" 中文 $(literal)',kind,page,task_id:null,sound:false,ack_path:ack,dismiss_path:dismiss}))
  let browser
+ const details=()=>({id,pid:child.pid,executable,queued,elapsed_ms:Date.now()-started,ready_ms:readyAt===undefined?null:readyAt-started,exit_code:child.exitCode,signal:child.signalCode,spawn_error:spawnError?.message,last_connection_error:lastConnectionError,stdout,stderr})
+ function checkProcess(){
+  if(spawnError)throw spawnError
+  if(child.exitCode!==null||child.signalCode!==null)throw Error(`Helper exited before connection: ${JSON.stringify(details())}`)
+  if(readyAt!==undefined&&!queued&&!stdout.includes('NOTIFICATION_TEST_CDP'))throw Error('Native test binary must be built with --features tauri/custom-protocol,notification-test')
+ }
+ async function connect(){
+  checkProcess()
+  try{
+   const response=await fetch(`http://127.0.0.1:${debugPort}/json/version`,{signal:AbortSignal.timeout(1000)})
+   if(!response.ok)throw Error(`DevTools discovery returned HTTP ${response.status}`)
+   browser=await chromium.connectOverCDP(`http://127.0.0.1:${debugPort}`,{timeout:1500})
+  }catch(error){lastConnectionError=error.message+(error.cause?.message?' / '+error.cause.message:'')}
+  if(!browser)await delay(100)
+ }
+ async function checkReady(){
+  while(readyAt===undefined&&Date.now()<deadline){checkProcess();await delay(50)}
+  assert(readyAt!==undefined,`Helper never reported READY: ${JSON.stringify(details())}`)
+  // 计时以收到 READY 为准，CDP 连接耗时不属于执行器的就绪承诺。
+  assert(readyAt-started<8000,`Helper exceeded runner readiness timeout: ${JSON.stringify(details())}`)
+ }
  async function cleanup(){
   child.kill();if(browser)await browser.close();await delay(250)
   for(const file of [ack,dismiss])await rm(file,{force:true})
@@ -31,26 +59,21 @@ async function helper(kind='success',page='tasks',queued=false){
   assert(path.basename(profile).startsWith('codebeat-notice-test-'))
   await rm(profile,{recursive:true,force:true,maxRetries:10,retryDelay:200}).catch(()=>{})
  }
+ const deadline=Date.now()+20000
  try{
-  const deadline=Date.now()+20000
   if(queued){
-   while(!stdout.includes('READY')&&Date.now()<deadline&&child.exitCode===null)await delay(50)
-   assert(stdout.includes('READY'),`Queued helper never reported READY: ${stderr}`)
-   assert(Date.now()-started<8000,'Queued helper exceeded runner readiness timeout')
+   await checkReady()
    return {child,ack,dismiss,cleanup,async rendered(){
-    while(!browser&&Date.now()<deadline){try{browser=await chromium.connectOverCDP(`http://127.0.0.1:${debugPort}`)}catch{await delay(100)}}
-    assert(browser,'Queued helper never constructed its WebView after slot release')
+    const promotedDeadline=Date.now()+20000
+    while(!browser&&Date.now()<promotedDeadline)await connect()
+    assert(browser,`Queued helper never constructed its WebView after slot release: ${JSON.stringify(details())}`)
     let view
-    while(!view&&Date.now()<deadline){view=browser.contexts().flatMap(c=>c.pages()).find(p=>p.url().includes('#/notification'));if(!view)await delay(100)}
+    while(!view&&Date.now()<promotedDeadline){view=browser.contexts().flatMap(c=>c.pages()).find(p=>p.url().includes('#/notification'));if(!view)await delay(100)}
     assert(view,'Queued helper never acquired a window');await view.locator('.native-notification').waitFor();return view
    }}
   }
-  while(!browser&&Date.now()<deadline){
-   if(child.exitCode!==null)throw Error(`Helper exited ${child.exitCode}: ${stderr}`)
-   try{const response=await fetch(`http://127.0.0.1:${debugPort}/json/version`);if(response.ok)browser=await chromium.connectOverCDP(`http://127.0.0.1:${debugPort}`)}catch{}
-   if(!browser)await delay(100)
-  }
-  assert(browser,`No WebView2 debugging endpoint: ${stderr}`)
+  while(!browser&&Date.now()<deadline)await connect()
+  assert(browser,`No WebView2 debugging endpoint: ${JSON.stringify(details())}`)
   let view
   while(!view&&Date.now()<deadline){view=browser.contexts().flatMap(c=>c.pages()).find(p=>p.url().includes('#/notification'));if(!view)await delay(100)}
   assert(view,`No notification webview: ${stderr}`)
@@ -63,11 +86,10 @@ async function helper(kind='success',page='tasks',queued=false){
   })
   await view.mouse.move(0,0)
   await view.locator('.native-notification').waitFor()
-  while(!stdout.includes('READY')&&Date.now()<deadline)await delay(50)
-  assert(stdout.includes('READY'),`Helper never reported READY: ${stderr}`)
-  assert(Date.now()-started<8000,'Helper exceeded runner readiness timeout')
+  await checkReady()
+  await appendFile('docs/logs/notification-helper.jsonl',JSON.stringify({event:'connected',...details()})+'\n')
   return {child,view,ack,dismiss,profile,browser,cleanup}
- }catch(error){await cleanup();throw error}
+ }catch(error){await appendFile('docs/logs/notification-helper.jsonl',JSON.stringify({event:'failed',error:error.message,...details()})+'\n');await cleanup();throw error}
 }
 async function waitExit(child){if(child.exitCode!==null)return;await Promise.race([new Promise(resolve=>child.once('exit',resolve)),delay(3000)])}
 try {
