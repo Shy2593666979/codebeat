@@ -18,6 +18,41 @@ struct ZeroSample {
     observed: DateTime<Utc>,
     reset: Option<DateTime<Utc>>,
 }
+
+/// 仅核实已经成功发送的请求；零用量本身不能证明窗口开启。
+fn stable_zero_reset(
+    samples: &[ZeroSample],
+    provider: ProviderId,
+    account: Option<&str>,
+    sent: DateTime<Utc>,
+) -> Option<DateTime<Utc>> {
+    let expected = sent + Duration::hours(5);
+    let matching: Vec<_> = samples
+        .iter()
+        .filter(|sample| {
+            sample.provider == provider
+                && sample.account.as_deref() == account
+                && sample.observed >= sent
+                && sample.reset.is_some_and(|reset| {
+                    reset > sample.observed && (reset - expected).num_seconds().abs() <= 120
+                })
+        })
+        .collect();
+    matching
+        .iter()
+        .filter(|last| {
+            matching.iter().any(|first| {
+                last.label == first.label
+                    && last.observed - first.observed >= Duration::seconds(30)
+                    && (last.reset.unwrap() - first.reset.unwrap())
+                        .num_seconds()
+                        .abs()
+                        <= 2
+            })
+        })
+        .max_by_key(|sample| sample.observed)
+        .and_then(|sample| sample.reset)
+}
 impl Database {
     pub fn optimizer_confirmed_windows(
         &self,
@@ -161,8 +196,32 @@ impl Database {
                 continue;
             }
             let sent = run.sent_at.unwrap_or(run.attempted_at);
-            let end = run.next_check_at.unwrap_or(sent + Duration::hours(5));
-            let actual_start = if run.state == "confirmed" {
+            let run_account = run
+                .after
+                .as_ref()
+                .or(run.before.as_ref())
+                .and_then(|report| report.reset_credits.as_ref())
+                .and_then(|credits| credits.account_key.as_deref());
+            if current_account
+                .as_deref()
+                .is_some_and(|account| run_account != Some(account))
+            {
+                continue;
+            }
+            let expected = run.next_check_at.unwrap_or(sent + Duration::hours(5));
+            let official_end = windows
+                .iter()
+                .filter(|window| {
+                    window.provider == run.provider
+                        && window.source == "observed"
+                        && (window.end - expected).num_seconds().abs() <= 120
+                })
+                .map(|window| window.end)
+                .max()
+                .or_else(|| stable_zero_reset(&zero_samples, run.provider, run_account, sent));
+            let end = official_end.unwrap_or(expected);
+            let confirmed = run.state == "confirmed" || official_end.is_some();
+            let actual_start = if confirmed {
                 end - Duration::hours(5)
             } else {
                 sent
@@ -182,12 +241,7 @@ impl Database {
                 provider: run.provider,
                 start: actual_start,
                 end,
-                source: if run.state == "confirmed" {
-                    "app"
-                } else {
-                    "app_unconfirmed"
-                }
-                .into(),
+                source: if confirmed { "app" } else { "app_unconfirmed" }.into(),
                 display_start,
                 closed_at: closures
                     .iter()

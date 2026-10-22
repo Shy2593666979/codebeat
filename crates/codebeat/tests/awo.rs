@@ -33,6 +33,76 @@ fn quota(
         }],
     }
 }
+
+#[test]
+fn successful_request_uses_stable_official_zero_reset_and_keeps_full_settle_minute() {
+    for stable in [false, true] {
+        let dir = tempfile::tempdir().unwrap();
+        let mut db = Database::open(&dir.path().join("timing.db")).unwrap();
+        let mut saved = db.settings().unwrap();
+        saved.pretrigger = settings();
+        saved.pretrigger.work_end = "21:00".into();
+        db.save_settings(&saved).unwrap();
+        let sent = at(13, 20) + Duration::seconds(18);
+        let reset = at(18, 20) + Duration::seconds(39);
+        let slot = format!("codex:{}", at(13, 18).timestamp());
+        assert!(db.claim_pretrigger(ProviderId::Codex, &slot, sent).unwrap());
+        let mut run = db.pretrigger_runs().unwrap().remove(0);
+        run.state = "sent_unconfirmed".into();
+        run.request_sent = true;
+        run.sent_at = Some(sent);
+        run.next_check_at = Some(sent + Duration::hours(5));
+        db.finish_pretrigger(&run).unwrap();
+        let first = quota(at(13, 21), 0.0, Some(reset));
+        db.cache_usage(&first).unwrap();
+        assert_eq!(
+            db.optimizer_confirmed_windows(at(13, 21)).unwrap()[0].source,
+            "app_unconfirmed"
+        );
+        let second = quota(
+            at(13, 22),
+            0.0,
+            Some(if stable {
+                reset
+            } else {
+                reset + Duration::minutes(1)
+            }),
+        );
+        db.cache_usage(&second).unwrap();
+        let windows = db.optimizer_confirmed_windows(at(13, 22)).unwrap();
+        assert_eq!(windows.len(), 1);
+        if stable {
+            assert_eq!(windows[0].source, "app");
+            assert_eq!(windows[0].start, at(13, 20) + Duration::seconds(39));
+            assert_eq!(windows[0].end, reset);
+            let plan = db
+                .replan_provider(ProviderId::Codex, Some(&second), at(13, 22))
+                .unwrap();
+            assert!(plan.window_confirmed);
+            assert_eq!(plan.slots[0].execute_at, reset + Duration::minutes(1));
+        } else {
+            assert_eq!(windows[0].source, "app_unconfirmed");
+            assert_eq!(windows[0].start, sent);
+        }
+    }
+}
+
+#[test]
+fn stable_zero_without_a_successful_request_is_not_trigger_history() {
+    let dir = tempfile::tempdir().unwrap();
+    let db = Database::open(&dir.path().join("no-request.db")).unwrap();
+    let mut saved = db.settings().unwrap();
+    saved.pretrigger = settings();
+    db.save_settings(&saved).unwrap();
+    for observed in [at(13, 21), at(13, 22)] {
+        db.cache_usage(&quota(observed, 0.0, Some(at(18, 20))))
+            .unwrap();
+    }
+    assert!(db
+        .optimizer_confirmed_windows(at(13, 22))
+        .unwrap()
+        .is_empty());
+}
 // 单元测试显式提供已核实的历史；快照稳定性由数据库测试验证。
 fn verified_plan(
     s: &PretriggerSettings,

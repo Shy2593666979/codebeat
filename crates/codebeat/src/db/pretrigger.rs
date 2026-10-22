@@ -25,14 +25,21 @@ impl Database {
         let history = self.optimizer_confirmed_windows(now)?;
         let own: Vec<_> = history.iter().filter(|w| w.provider == id).collect();
         if let Some(first) = own.first() {
-            seed.day_start = Some(first.display_start.unwrap_or(first.start));
+            seed.day_start = Some(first.start);
         }
         if let Some(last) = own.last() {
             seed.actual_reset = Some(last.closed_at.unwrap_or(last.end));
             seed.latest_start = Some(last.start);
-            seed.window_confirmed = true;
+            seed.window_confirmed = last.source != "app_unconfirmed";
         }
-        let plan = allocation::runtime_plan(&settings, id, now, report, Some(&seed))?;
+        let mut plan = allocation::runtime_plan(&settings, id, now, report, Some(&seed))?;
+        // 尚未核实的成功发送仍占用本轮，不能重新领取同一个理论节点。
+        if let Some(last) = own.last().filter(|last| last.source == "app_unconfirmed") {
+            let earliest = last.end + Duration::seconds(allocation::RESET_SETTLE_SECONDS);
+            plan.slots.retain(|slot| slot.execute_at >= earliest);
+            plan.recommendations = plan.slots.iter().map(|slot| slot.execute_at).collect();
+            plan.automatic_allowed &= now >= earliest;
+        }
         awo_runtime::Entity::insert(awo_runtime::ActiveModel {
             provider_id: Set(id.as_str().into()),
             data_json: Set(serde_json::to_string(&plan)?),
