@@ -54,6 +54,31 @@ fn official_early_reset_survives_a_failed_read_and_is_not_repeated() {
 }
 
 #[test]
+fn snapshot_failure_rolls_back_the_notice_dedup_and_quota_baseline() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("rollback.db");
+    let db = Database::open(&path).unwrap();
+    let before = report(0, 63., 1, serde_json::Value::Null);
+    let after = report(10, 0., 1, serde_json::Value::Null);
+    db.cache_usage(&before).unwrap();
+    let sql = rusqlite::Connection::open(&path).unwrap();
+    sql.execute_batch("CREATE TRIGGER reject_snapshot BEFORE INSERT ON usage_snapshots BEGIN SELECT RAISE(ABORT,'injected snapshot failure'); END;").unwrap();
+    assert!(db.cache_usage(&after).is_err());
+    assert!(db.pending_notices().unwrap().is_empty());
+    assert_eq!(
+        db.latest_usage(ProviderId::Codex).unwrap().unwrap().windows[0].used_percent,
+        Some(63.)
+    );
+    sql.execute_batch("DROP TRIGGER reject_snapshot;").unwrap();
+    db.cache_usage(&after).unwrap();
+    assert_eq!(db.pending_notices().unwrap().len(), 1);
+    assert_eq!(
+        db.pending_notices().unwrap()[0].title,
+        "Codex 官方额度已重置"
+    );
+}
+
+#[test]
 fn expired_missing_and_truncated_card_details_do_not_prove_redemption() {
     for details in [
         serde_json::Value::Null,

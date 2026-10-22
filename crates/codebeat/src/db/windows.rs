@@ -22,10 +22,10 @@ impl Database {
     pub fn optimizer_confirmed_windows(
         &self,
         now: DateTime<Utc>,
-    ) -> Result<Vec<pretrigger::ConfirmedWindow>> {
+    ) -> Result<Vec<allocation::ConfirmedWindow>> {
         let settings = self.settings()?.pretrigger;
         let date =
-            pretrigger::runtime_plan(&settings, settings.providers[0], now, None, None)?.date;
+            allocation::runtime_plan(&settings, settings.providers[0], now, None, None)?.date;
         let zone = settings.timezone.parse::<chrono_tz::Tz>()?;
         let start = zone
             .from_local_datetime(&date.and_hms_opt(0, 0, 0).context("DAY_START")?)
@@ -34,7 +34,7 @@ impl Database {
             .with_timezone(&Utc);
         let range_end = start
             + Duration::minutes(i64::from(
-                pretrigger::work_intervals(&pretrigger::effective_settings(&settings, date))?
+                allocation::work_intervals(&allocation::effective_settings(&settings, date))?
                     .last()
                     .context("WORK_INTERVAL")?
                     .1
@@ -43,12 +43,15 @@ impl Database {
         let current_account = self
             .latest_successful_usage(ProviderId::Codex)?
             .and_then(|r| r.reset_credits.and_then(|c| c.account_key));
-        let mut statement=self.conn.prepare("SELECT data_json FROM (SELECT rowid,data_json FROM usage_snapshots ORDER BY rowid DESC LIMIT 10000) ORDER BY rowid")?;
-        let rows = statement.query_map([], |row| row.get::<_, String>(0))?;
+        let mut rows = entities::usage_snapshots::Entity::find()
+            .order_by_desc(Expr::cust("rowid"))
+            .limit(10000)
+            .all(&self.conn)?;
+        rows.reverse();
         let mut candidates: Vec<Candidate> = Vec::new();
         let mut zero_samples = Vec::new();
         for row in rows {
-            let report: UsageReport = serde_json::from_str(&row?)?;
+            let report: UsageReport = serde_json::from_str(&row.data_json)?;
             if report.status != "available" || !settings.providers.contains(&report.provider) {
                 continue;
             }
@@ -135,10 +138,10 @@ impl Database {
                 (c.provider, c.reset, closed)
             })
             .collect();
-        let mut windows: Vec<pretrigger::ConfirmedWindow> = candidates
+        let mut windows: Vec<allocation::ConfirmedWindow> = candidates
             .into_iter()
             .filter(|c| c.last - c.first >= Duration::seconds(30))
-            .map(|c| pretrigger::ConfirmedWindow {
+            .map(|c| allocation::ConfirmedWindow {
                 provider: c.provider,
                 start: c.reset - Duration::hours(5),
                 end: c.reset,
@@ -175,7 +178,7 @@ impl Database {
                 .and_then(|t| DateTime::from_timestamp(t, 0));
             windows
                 .retain(|w| w.provider != run.provider || (w.end - end).num_seconds().abs() > 120);
-            windows.push(pretrigger::ConfirmedWindow {
+            windows.push(allocation::ConfirmedWindow {
                 provider: run.provider,
                 start: actual_start,
                 end,

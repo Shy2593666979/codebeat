@@ -269,7 +269,10 @@ pub(crate) async fn create_task(
     request: CreateTaskRequest,
     app: tauri::AppHandle,
 ) -> IpcResult<Task> {
-    let task = codebeat_lib::tasks::service::create_task(db().map_err(error)?, request)
+    let path = codebeat_lib::db::data_dir()
+        .map_err(error)?
+        .join("codebeat.db");
+    let task = codebeat_lib::tasks::service::create_task(path, request)
         .await
         .map_err(error)?;
     emit(&app, &task);
@@ -282,7 +285,10 @@ pub(crate) async fn update_task(
     request: CreateTaskRequest,
     app: tauri::AppHandle,
 ) -> IpcResult<Task> {
-    let task = codebeat_lib::tasks::service::update_task(db().map_err(error)?, id, request)
+    let path = codebeat_lib::db::data_dir()
+        .map_err(error)?
+        .join("codebeat.db");
+    let task = codebeat_lib::tasks::service::update_task(path, id, request)
         .await
         .map_err(error)?;
     emit(&app, &task);

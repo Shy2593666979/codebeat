@@ -15,6 +15,25 @@ fn child_claim_worker() {
 }
 
 #[test]
+fn orm_opens_relative_unicode_paths_and_in_memory_databases() {
+    let dir = tempfile::Builder::new()
+        .prefix(".orm-path-")
+        .tempdir_in(".")
+        .unwrap();
+    let path = std::path::PathBuf::from(dir.path().file_name().unwrap()).join("中文 # quota.db");
+    assert!(path.is_relative());
+    let db = Database::open(&path).unwrap();
+    assert!(db.notify_once("relative").unwrap());
+    drop(db);
+    assert!(!Database::open(&path)
+        .unwrap()
+        .notify_once("relative")
+        .unwrap());
+    let memory = Database::open(std::path::Path::new(":memory:")).unwrap();
+    assert!(memory.notify_once("memory").unwrap());
+}
+
+#[test]
 fn skipped_recurring_occurrence_advances_once_without_running() {
     let dir = tempfile::tempdir().unwrap();
     let mut db = Database::open(&dir.path().join("repeat.db")).unwrap();
@@ -114,6 +133,23 @@ fn concurrent_connections_claim_once() {
         .count();
     assert_eq!(count, 1);
     assert_eq!(db.runs().unwrap().len(), 1);
+}
+
+#[test]
+fn failed_run_insert_rolls_back_the_task_claim_and_releases_the_connection() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("rollback.db");
+    let mut db = Database::open(&path).unwrap();
+    let task = db.insert_task(request()).unwrap();
+    db.transition(&task.id, &["pending_registration"], "scheduled", None)
+        .unwrap();
+    let sql = rusqlite::Connection::open(&path).unwrap();
+    sql.execute_batch("CREATE TRIGGER reject_run BEFORE INSERT ON task_runs BEGIN SELECT RAISE(ABORT,'injected run failure'); END;").unwrap();
+    assert!(db.claim(&task.id, true).is_err());
+    assert_eq!(db.task(&task.id).unwrap().state, "scheduled");
+    assert!(db.runs().unwrap().is_empty());
+    sql.execute_batch("DROP TRIGGER reject_run;").unwrap();
+    assert!(db.claim(&task.id, true).unwrap().is_some());
 }
 #[test]
 fn finished_task_never_replayed() {

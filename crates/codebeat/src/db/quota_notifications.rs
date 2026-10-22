@@ -1,6 +1,7 @@
 //! 额度变化与重置来源通知。失败观测不覆盖基线，卡片过期不等于兑换成功。
 use super::*;
 use chrono::{DateTime, Utc};
+use entities::{quota_credit_changes, quota_notice_state, quota_reset_consumptions};
 
 fn observed(report: &UsageReport) -> Option<DateTime<Utc>> {
     report
@@ -149,14 +150,9 @@ impl Database {
         {
             return Ok(None);
         }
-        let saved: Option<String> = self
-            .conn
-            .query_row(
-                "SELECT data_json FROM quota_notice_state WHERE provider_id='codex'",
-                [],
-                |r| r.get(0),
-            )
-            .optional()?;
+        let saved = quota_notice_state::Entity::find_by_id("codex")
+            .one(&self.conn)?
+            .map(|row| row.data_json);
         let old = saved
             .map(|s| serde_json::from_str::<UsageReport>(&s))
             .transpose()?
@@ -170,17 +166,25 @@ impl Database {
         let account_key = account(report).unwrap();
         let correlation =
             Duration::minutes((self.settings()?.connection_interval_minutes * 2 + 5).max(30));
-        let pending: Option<String> = self.conn.query_row("SELECT before_json FROM quota_credit_changes WHERE account_key=?1 AND observed_at>=?2", params![account_key,(observed(report).unwrap()-correlation).to_rfc3339()], |r| r.get(0)).optional()?;
+        let pending = quota_credit_changes::Entity::find_by_id(account_key)
+            .filter(
+                quota_credit_changes::Column::ObservedAt
+                    .gte((observed(report).unwrap() - correlation).to_rfc3339()),
+            )
+            .one(&self.conn)?
+            .map(|row| row.before_json);
         let card_before = pending
             .map(|s| serde_json::from_str::<UsageReport>(&s))
             .transpose()?;
         let event = old
             .as_ref()
             .and_then(|old| reset_message(old, report, card_before.as_ref()));
-        self.conn.execute(
-            "DELETE FROM quota_credit_changes WHERE observed_at<?1",
-            [(observed(report).unwrap() - correlation).to_rfc3339()],
-        )?;
+        quota_credit_changes::Entity::delete_many()
+            .filter(
+                quota_credit_changes::Column::ObservedAt
+                    .lt((observed(report).unwrap() - correlation).to_rfc3339()),
+            )
+            .exec(&self.conn)?;
         if event.is_none() {
             if let Some(before) = old.as_ref().filter(|before| {
                 account(before) == Some(account_key)
@@ -190,26 +194,52 @@ impl Database {
                         .zip(report.reset_credits.as_ref())
                         .is_some_and(|(a, b)| a.available_count > b.available_count)
             }) {
-                self.conn.execute(
-                    "INSERT OR IGNORE INTO quota_credit_changes VALUES(?1,?2,?3)",
-                    params![
-                        account_key,
-                        serde_json::to_string(before)?,
-                        observed(report).unwrap().to_rfc3339()
-                    ],
-                )?;
+                quota_credit_changes::Entity::insert(quota_credit_changes::ActiveModel {
+                    account_key: Set(account_key.into()),
+                    before_json: Set(serde_json::to_string(before)?),
+                    observed_at: Set(observed(report).unwrap().to_rfc3339()),
+                })
+                .on_conflict(
+                    OnConflict::column(quota_credit_changes::Column::AccountKey)
+                        .do_nothing()
+                        .to_owned(),
+                )
+                .exec_without_returning(&self.conn)?;
             }
         } else {
-            self.conn.execute(
-                "DELETE FROM quota_credit_changes WHERE account_key=?1",
-                [account_key],
-            )?;
+            quota_credit_changes::Entity::delete_by_id(account_key).exec(&self.conn)?;
         }
-        self.conn.execute("INSERT INTO quota_notice_state VALUES('codex',?1) ON CONFLICT(provider_id) DO UPDATE SET data_json=excluded.data_json", [serde_json::to_string(report)?])?;
+        quota_notice_state::Entity::insert(quota_notice_state::ActiveModel {
+            provider_id: Set("codex".into()),
+            data_json: Set(serde_json::to_string(report)?),
+        })
+        .on_conflict(
+            OnConflict::column(quota_notice_state::Column::ProviderId)
+                .update_column(quota_notice_state::Column::DataJson)
+                .to_owned(),
+        )
+        .exec_without_returning(&self.conn)?;
         let at = observed(report).unwrap().to_rfc3339();
-        let consumed: bool = self.conn.query_row("SELECT EXISTS(SELECT 1 FROM quota_reset_consumptions WHERE account_key=?1 AND reconciled=0 AND consumed_at>=?2 AND consumed_at<=?3)", params![account_key,(Utc::now()-correlation).to_rfc3339(),at], |r| r.get(0))?;
+        let consumed = quota_reset_consumptions::Entity::find()
+            .filter(quota_reset_consumptions::Column::AccountKey.eq(account_key))
+            .filter(quota_reset_consumptions::Column::Reconciled.eq(false))
+            .filter(
+                quota_reset_consumptions::Column::ConsumedAt
+                    .gte((Utc::now() - correlation).to_rfc3339()),
+            )
+            .filter(quota_reset_consumptions::Column::ConsumedAt.lte(&at))
+            .count(&self.conn)?
+            > 0;
         if consumed {
-            self.conn.execute("UPDATE quota_reset_consumptions SET reconciled=1 WHERE account_key=?1 AND reconciled=0 AND consumed_at<=?2", params![account_key,at])?;
+            quota_reset_consumptions::Entity::update_many()
+                .col_expr(
+                    quota_reset_consumptions::Column::Reconciled,
+                    Expr::value(true),
+                )
+                .filter(quota_reset_consumptions::Column::AccountKey.eq(account_key))
+                .filter(quota_reset_consumptions::Column::Reconciled.eq(false))
+                .filter(quota_reset_consumptions::Column::ConsumedAt.lte(at))
+                .exec(&self.conn)?;
             return Ok(None);
         }
         let Some((title, message)) = event else {
@@ -241,15 +271,7 @@ impl Database {
             topic: Some(format!("system:{key}")),
             at: Utc::now(),
         };
-        self.conn.execute(
-            "INSERT INTO notification_inbox(id,data_json,created_at,topic) VALUES(?1,?2,?3,?4)",
-            params![
-                notice.id,
-                serde_json::to_string(&notice)?,
-                notice.at.to_rfc3339(),
-                notice.topic
-            ],
-        )?;
+        self.insert_notice(&notice)?;
         Ok(Some(notice))
     }
 
@@ -259,18 +281,30 @@ impl Database {
         if account.is_empty() {
             bail!("RESET_ACCOUNT_CHANGED");
         }
-        let tx = rusqlite::Transaction::new_unchecked(&self.conn, TransactionBehavior::Immediate)?;
-        let inserted = self.conn.execute("INSERT OR IGNORE INTO quota_reset_consumptions(attempt_id,account_key,consumed_at) VALUES(?1,?2,?3)", params![attempt,account,Utc::now().to_rfc3339()])?;
-        let notice = if inserted == 1 {
-            self.persist_quota_notice(
-                &format!("quota-card:{attempt}"),
-                "Codex 重置卡已使用",
-                "官方已确认重置卡兑换成功，额度已重置；最新用量将继续刷新。",
-            )?
-        } else {
-            None
-        };
-        tx.commit()?;
+        let notice = self.write(|db| {
+            let inserted =
+                quota_reset_consumptions::Entity::insert(quota_reset_consumptions::ActiveModel {
+                    attempt_id: Set(attempt.into()),
+                    account_key: Set(account.into()),
+                    consumed_at: Set(Utc::now().to_rfc3339()),
+                    reconciled: Set(false),
+                })
+                .on_conflict(
+                    OnConflict::column(quota_reset_consumptions::Column::AttemptId)
+                        .do_nothing()
+                        .to_owned(),
+                )
+                .exec_without_returning(&db.conn)?;
+            if inserted == 1 {
+                db.persist_quota_notice(
+                    &format!("quota-card:{attempt}"),
+                    "Codex 重置卡已使用",
+                    "官方已确认重置卡兑换成功，额度已重置；最新用量将继续刷新。",
+                )
+            } else {
+                Ok(None)
+            }
+        })?;
         if let Some(notice) = notice {
             self.show_quota_notice(&notice);
         }

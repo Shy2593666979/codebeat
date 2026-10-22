@@ -1,14 +1,17 @@
 use crate::{db::Database, models::*, tasks::validate_task};
 use anyhow::{bail, Result};
+use std::path::PathBuf;
 
-pub async fn create_task(db: Database, mut request: CreateTaskRequest) -> Result<Task> {
-    let settings = db.settings()?;
+pub async fn create_task(database_path: PathBuf, mut request: CreateTaskRequest) -> Result<Task> {
+    // 同步 ORM 连接不跨越网络 await；只在实际读写阶段打开。
+    let settings = Database::open(&database_path)?.settings()?;
     validate_task(&request, &settings, chrono::Utc::now(), true)?;
     crate::providers::verify(&request.conversation).await?;
     request.conversation.lock_state = crate::providers::session_lock::require_known(
         request.conversation.provider,
         &request.conversation.session_id,
     )?;
+    let db = Database::open(&database_path)?;
     let task = register_task(&db, request)?;
     Ok(task)
 }
@@ -34,14 +37,19 @@ fn complete_registration(db: &Database, task: &Task) -> Result<()> {
     }
 }
 
-pub async fn update_task(db: Database, id: String, mut request: CreateTaskRequest) -> Result<Task> {
-    let settings = db.settings()?;
+pub async fn update_task(
+    database_path: PathBuf,
+    id: String,
+    mut request: CreateTaskRequest,
+) -> Result<Task> {
+    let settings = Database::open(&database_path)?.settings()?;
     validate_task(&request, &settings, chrono::Utc::now(), true)?;
     crate::providers::verify(&request.conversation).await?;
     request.conversation.lock_state = crate::providers::session_lock::require_known(
         request.conversation.provider,
         &request.conversation.session_id,
     )?;
+    let db = Database::open(&database_path)?;
     db.transition(
         &id,
         &[

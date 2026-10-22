@@ -14,7 +14,11 @@ CodeBeat 由桌面主程序、独立后台执行器和共享业务库三层组�
 
 完整目录与依赖关系见 [当前项目结构](#项目结构)。桌面主程序 `desktop/src-tauri` 只管理 Tauri 窗口、托盘、通知展示和 IPC；Vue 前端按 components/pages/services/stores/composables/types 分组。
 
-共享库 `crates/codebeat`（Cargo 包名 `codebeat-lib`）无 Tauri 依赖。`models` 定义序列化类型，`tasks` 负责目录校验、UTC/本地时区一致性、错过策略、任务服务及执行。`db` 使用 rusqlite bundled SQLite、WAL、10 秒 busy timeout、user_version=3 迁移（包含预启动执行记录及持久化通知收件箱）。数据库结构将完整任务请求保存为版本化 schema 下的 JSON，运行结果及心跳独立列；与技术规格中的建议 SQL 在存储形态上不同，领域字段保持齐全。
+共享库 `crates/codebeat`（Cargo 包名 `codebeat-lib`）无 Tauri 依赖。`models` 定义序列化类型，`tasks` 负责目录校验、UTC/本地时区一致性、错过策略、任务服务及执行。`db` 使用 SeaORM 2 的官方同步版本 `sea-orm-sync`；SQLite 驱动与引擎随软件内置，保留 WAL、10 秒 busy timeout 和 `user_version=8`。完整任务请求仍保存为 JSON，运行结果和心跳保持独立列，实体映射不改变现有表结构。
+
+`db/entities/` 一张表一个模块，包含 15 张表的显式字段和主键；领域类型仍在 `models/`。查询与写入分别由 `db/tasks.rs`、`settings.rs`、`notifications.rs`、`usage.rs`、`pretrigger.rs`、`quota_notifications.rs` 维护，`windows.rs` 负责基于快照重建窗口。`mod.rs` 仅保留连接、初始化和事务入口。同步 ORM 适合当前桌面/Runner 的短 SQLite 操作，不引入额外 Tokio runtime，也不需要在业务调用链里阻塞等待异步 ORM。
+
+写事务统一通过 SeaORM 的 `BEGIN IMMEDIATE` 执行，闭包内的仓储方法只使用该事务连接，出错时整体回滚；任务抢占与运行记录创建、额度基线与通知去重、主题替换等保持原子性。结构升级由 `db/migrations.rs` 在同一个立即事务中按版本执行 `upgrades/` 的原有 SQL，未来版本数据库会拒绝打开。业务层不再直接调用 rusqlite；仅 JSON 文档过滤和 SQLite 隐式 `rowid` 排序保留固定表达式。测试用独立 SQLite 连接注入失败，验证不会留下半次抢占或提前确认的额度通知。
 
 共享库的 `providers` 模块 唯一负责官方 CLI、JSON-RPC、额度与会话解析。Codex 支持多 bucket 与 primary / secondary，不预设时长；Claude 不提供未经验证的额度值。RPC 每连接握手、递增 ID、stdout 与 stderr 分流、25 秒单请求超时、进程退出检测；每次查询重新连接，失败不自动重发模型请求。
 
@@ -32,7 +36,7 @@ Codex 会话使用 `providers/session_lock.rs` 检查实际系统文件锁，列
 
 生产前端不提供内置假数据。测试 fixture 是单独可执行文件，只有测试使用，不包含在安装包中。Runner 集成测试在隔离目录将 fixture 作为临时 PATH 中的原生 CLI，验证无 GUI、重复进程触发、安全 stdin 提示词和最终状态。浏览器测试加载实际 dist 资源，并通过独立 IPC fixture 提供测试额度与会话，不访问真实模型接口。
 
-可用性限界：后台恢复要求用户已登录且官方 CLI 环境可访问；不运行在 SYSTEM，不保存 Windows 密码。关机不能开机。DPAPI、完整英文表单、运行中事件推送、升级迁移回滚向导、真实账号完整预启动周期与干净系统验收尚未完成。当前版本 user_version 大于 3 会拒绝打开；备份应在应用与 Runner 全部停止后复制整个应用数据目录（包括 SQLite WAL/SHM）。
+可用性限界：后台恢复要求用户已登录且官方 CLI 环境可访问；不运行在 SYSTEM，不保存 Windows 密码。关机不能开机。DPAPI、完整英文表单、运行中事件推送、升级迁移回滚向导、真实账号完整预启动周期与干净系统验收尚未完成。当前版本 user_version 大于 8 会拒绝打开；在线备份应使用 SQLite backup API，直接复制文件则应先停止应用与 Runner，并保留整个数据目录（包括 SQLite WAL/SHM）。
 
 ## 项目结构
 
@@ -60,7 +64,8 @@ codebeat/
 ├─ crates/
 │  ├─ codebeat/                   # 共享库，Cargo 包名 codebeat-lib
 │  │  ├─ src/
-│  │  │  ├─ db/                   # SQLite、状态和消息持久化
+│  │  │  ├─ db/                   # SeaORM 仓储、连接和结构升级
+│  │  │  │  └─ entities/          # 15 张 SQLite 表的实体映射
 │  │  │  ├─ models/
 │  │  │  ├─ tasks/
 │  │  │  ├─ providers/
