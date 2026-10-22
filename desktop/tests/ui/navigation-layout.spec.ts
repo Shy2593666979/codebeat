@@ -62,7 +62,10 @@ for(const viewport of [{width:1348,height:1024},{width:1100,height:720},{width:6
    const workspace=page.locator('.workspace')
    await workspace.evaluate(el=>{el.scrollTop=el.scrollHeight})
    if(route==='/settings'){
-    if(viewport.width>=1024)expect(await workspace.evaluate(el=>el.scrollTop)).toBe(0)
+    if(viewport.width>=1024){
+     const layout=await workspace.evaluate(el=>({scrollTop:el.scrollTop,height:el.clientHeight,scrollHeight:el.scrollHeight,panels:Array.from(el.querySelectorAll('.settings-board>*')).map(panel=>({height:panel.getBoundingClientRect().height,text:panel.textContent?.slice(0,35)}))}))
+     expect(layout.scrollTop,JSON.stringify(layout)).toBe(0)
+    }
     else expect(await workspace.evaluate(el=>el.scrollTop)).toBeGreaterThan(0)
     await page.screenshot({path:`../docs/screenshots/navigation/settings-scrolled-${viewport.width}.png`,animations:'disabled'})
    }
