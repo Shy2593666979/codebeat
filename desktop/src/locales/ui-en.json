@@ -1,6 +1,7 @@
 {
   "5H额度开始": "5H quota starts",
   "请求已发送": "Request sent",
+  "用量读取失败，将在下次检测时重试": "Usage could not be read; retrying at the next check",
   "5H额度触发": "5H quota triggered",
   "已触发，预计 {time} 恢复": "Triggered · estimated reset at {time}",
   "已完成": "Completed",

@@ -10,13 +10,13 @@ import BrandMark from './components/BrandMark.vue'
 import ConversationBubble from './components/ConversationBubble.vue'
 import FeedbackNotices from './components/FeedbackNotices.vue'
 import {desktop,call} from './services/api'
-import {store,refresh,loadLocal,loadMonitoring,applyUsageRefresh,action} from './stores/store'
+import {store,refresh,loadLocal,loadMonitoring,loadTokens,applyUsageRefresh,action} from './stores/store'
 import type {UsageRefreshState,ProviderHealth} from './types'
 const router=useRouter(),exitOpen=ref(false),cancelScheduled=ref(false),workspace=ref<HTMLElement|null>(null)
 const nav=[{path:'/',label:'首页',en:'Home',icon:House},{path:'/tasks',label:'任务',en:'Tasks',icon:CalendarCheck},{path:'/sessions',label:'会话',en:'Sessions',icon:ConversationBubble},{path:'/usage',label:'额度',en:'Usage',icon:ChartPie},{path:'/settings',label:'设置',en:'Settings',icon:Settings}]
 const unlisten:UnlistenFn[]=[];let timer:ReturnType<typeof setInterval>
 watch(()=>router.currentRoute.value.path,()=>{if(workspace.value){workspace.value.scrollTop=0;workspace.value.scrollLeft=0}},{flush:'post'})
-onMounted(async()=>{void refresh();if(desktop){unlisten.push(await listen<string>('notification-open',e=>router.push(e.payload)),await listen('task-updated',()=>loadLocal()),await listen('settings-updated',()=>loadLocal()),await listen('refresh-requested',()=>refresh()),await listen<UsageRefreshState>('usage-updated',e=>{applyUsageRefresh(e.payload);if(!e.payload.refreshing)void loadMonitoring().catch(()=>undefined)}),await listen<ProviderHealth>('provider-updated',e=>{const i=store.providers.findIndex(p=>p.id===e.payload.id);if(i<0)store.providers.push(e.payload);else store.providers[i]=e.payload}),await listen<string>('navigate',e=>router.push('/'+e.payload)),await listen('exit-requested',()=>{exitOpen.value=true}));const target=await call<string|null>('get_launch_target');if(target)await router.push(target);timer=setInterval(async()=>{store.now=Date.now();if(!document.hidden)await loadLocal()},15000)}})
+onMounted(async()=>{void refresh();if(desktop){unlisten.push(await listen<string>('notification-open',e=>router.push(e.payload)),await listen('task-updated',()=>loadLocal()),await listen('settings-updated',()=>loadLocal()),await listen('refresh-requested',()=>refresh()),await listen<UsageRefreshState>('usage-updated',e=>{applyUsageRefresh(e.payload);if(!e.payload.refreshing){void loadMonitoring().catch(()=>undefined);void loadTokens()}}),await listen<ProviderHealth>('provider-updated',e=>{const i=store.providers.findIndex(p=>p.id===e.payload.id);if(i<0)store.providers.push(e.payload);else store.providers[i]=e.payload}),await listen<string>('navigate',e=>router.push('/'+e.payload)),await listen('exit-requested',()=>{exitOpen.value=true}));const target=await call<string|null>('get_launch_target');if(target)await router.push(target);timer=setInterval(async()=>{store.now=Date.now();if(!document.hidden)await loadLocal()},15000)}})
 
 let windowStateVersion=0,windowStateClosed=false,saveSizeTimer:ReturnType<typeof setTimeout>
 async function syncWindowShape(){
