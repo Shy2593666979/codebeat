@@ -10,15 +10,15 @@ describe('daily coding allocation',()=>{
   expect(row.nodes.map(n=>n.executeMinute)).toEqual([450,751,1052])
   expect(row.predictions.map(w=>[w.a,w.b])).toEqual([[450,750],[750,1050],[1050,1350]])
  })
- it('restarts the display cycle at the official reset instead of showing later usage observations as ticks',()=>{
+ it('keeps actual starts and reset closures instead of projecting history onto theoretical cycles',()=>{
   const runtime={provider:'codex',date:'2026-10-20',day_start:'2026-10-20T00:40:00Z',display_times:['2026-10-20T00:40:00Z','2026-10-20T05:40:00Z','2026-10-20T10:40:00Z'],slots:[]} as unknown as OptimizerRuntime
   const row=allocationRows(settings,'2026-10-20',Date.parse('2026-10-20T10:00:00Z'),[runtime],[
    {provider:'codex',source:'observed',start:'2026-10-20T00:40:00Z',end:'2026-10-20T05:40:00Z'},
    {provider:'codex',source:'observed',start:'2026-10-20T06:01:00Z',end:'2026-10-20T11:01:00Z',closed_at:'2026-10-20T06:43:00Z'},
    {provider:'codex',source:'observed',start:'2026-10-20T07:04:00Z',end:'2026-10-20T12:04:00Z'},
   ])[0]
-  expect(row.cycles.map(w=>[w.a,w.b])).toEqual([[520,820],[820,883],[883,1183]])
-  expect(row.nodes.map(n=>n.minute)).toEqual([520,820,883])
+  expect(row.cycles.map(w=>[w.a,w.b])).toEqual([[520,820],[841,883],[904,1204]])
+  expect(row.nodes.map(n=>n.minute)).toEqual([520,841,904])
   expect(row.resets).toEqual([883])
   expect(row.predictions).toEqual([])
   expect(row.cycles[2].events[0].start).toBe('2026-10-20T07:04:00Z')
@@ -40,7 +40,7 @@ describe('daily coding allocation',()=>{
   expect(row.starts).not.toContain(450)
   runtime.actual_reset='2026-10-19T09:00:00Z';runtime.recommendations=['2026-10-19T09:01:00Z']
   windows.push({provider:'codex',start:'2026-10-19T04:00:00Z',end:'2026-10-19T09:00:00Z'})
-  expect(allocationRows(settings,'2026-10-19',Date.parse('2026-10-19T04:30:00Z'),[runtime],windows)[0].nodes.map(n=>[n.minute,n.confirmed])).toEqual([[380,true],[680,true],[980,false]])
+  expect(allocationRows(settings,'2026-10-19',Date.parse('2026-10-19T04:30:00Z'),[runtime],windows)[0].nodes.map(n=>[n.minute,n.confirmed])).toEqual([[380,true],[720,true],[1020,false]])
  })
  it('does not restore cancelled recommendations when an actual window leaves no remaining work',()=>{
   const runtime={provider:'codex',date:'2026-10-19',actual_reset:'2026-10-19T15:00:00Z',window_confirmed:true,recommendations:[],slots:[],status:'active'} as unknown as OptimizerRuntime
@@ -70,5 +70,16 @@ describe('daily coding allocation',()=>{
   expect(row.actual).toEqual([])
   expect(row.nodes.every(node=>!node.confirmed)).toBe(true)
   expect(row.starts).toEqual([450,750,1050])
+ })
+ it('uses the real 13:20 start and 18:20 recovery instead of stale 13:18 and 18:18 slots',()=>{
+  const runtime={provider:'codex',date:'2026-10-21',day_start:'2026-10-21T00:18:43Z',slots:[{display_at:'2026-10-21T10:18:43Z',execute_at:'2026-10-21T10:21:39Z'}]} as unknown as OptimizerRuntime
+  const row=allocationRows({...settings,work_end:'21:00'},'2026-10-21',Date.parse('2026-10-21T08:00:00Z'),[runtime],[
+   {provider:'codex',source:'observed',start:'2026-10-21T00:18:43Z',end:'2026-10-21T05:18:43Z'},
+   {provider:'codex',source:'app',start:'2026-10-21T05:20:39Z',end:'2026-10-21T10:20:39Z',display_start:'2026-10-21T05:18:43Z'},
+  ])[0]
+  expect(row.nodes.map(n=>n.minute)).toEqual([498,800,1100])
+  expect(row.nodes.at(-1)!.executeMinute).toBe(1101)
+  expect(row.cycles.map(c=>[c.a,c.b])).toEqual([[498,798],[800,1100]])
+  expect(row.nodes.some(n=>n.minute===798||n.minute===1098)).toBe(false)
  })
 })

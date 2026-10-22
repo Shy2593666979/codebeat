@@ -26,26 +26,30 @@ export function allocationRows(settings:PretriggerSettings,date:string,now:numbe
   const actual=windows.filter(w=>w.provider===provider&&Date.parse(w.start)<=now)
    .map(w=>({...w,a:shiftMinute(w.start,date,settings.timezone),b:shiftMinute(w.closed_at||w.end,date,settings.timezone)}))
    .filter(w=>w.a>=Math.min(0,plan.starts[0]!)&&w.a<end).sort((a,b)=>a.a-b.a)
-  const first=actual[0]
-  const base=runtime?.day_start?shiftMinute(runtime.day_start,date,settings.timezone):first?shiftMinute(first.display_start||first.start,date,settings.timezone):plan.starts[0]!
-  // 官方提前重置会截断旧周期；观测到使用的时间留在详情中，不另加主刻度。
+  const base=runtime?.day_start?shiftMinute(runtime.day_start,date,settings.timezone):actual[0]?.a??plan.starts[0]!
+  const latest=actual.at(-1)
   const resets=[...new Set(actual.filter(w=>w.closed_at).map(w=>w.b))].filter(t=>t>base&&t<end).sort((a,b)=>a-b)
-  const anchors=[base,...resets]
-  const cycleStart=(minute:number)=>{const anchor=[...anchors].reverse().find(a=>a<=minute)??base;return anchor+Math.max(0,Math.floor((minute-anchor)/300))*300}
-  const eventCycle=(w:typeof actual[number])=>cycleStart(Math.max(w.display_start?shiftMinute(w.display_start,date,settings.timezone):w.a,[...resets].reverse().find(r=>r<=w.a)??base))
-  const cycleEnd=(minute:number)=>Math.min(minute+300,resets.find(r=>r>minute)??Infinity)
-  const times=resets.length?anchors.flatMap((anchor,i)=>Array.from({length:Math.max(0,Math.ceil(((anchors[i+1]??end)-anchor)/300))},(_,n)=>anchor+n*300)):runtime?.display_times?.length?runtime.display_times.map(t=>shiftMinute(t,date,settings.timezone)):Array.from({length:Math.max(0,Math.ceil((end-base)/300))},(_,i)=>base+i*300)
-  const nodes:AllocationNode[]=times.map((minute,index)=>{
-   const events=actual.filter(w=>eventCycle(w)===minute)
-   const slot=runtime?.slots?.find(s=>resets.length?cycleStart(shiftMinute(s.execute_at,date,settings.timezone))===minute:shiftMinute(s.display_at,date,settings.timezone)===minute)
-   const latest=actual.at(-1),lastIndex=latest?times.indexOf(cycleStart(latest.a)):-1
-   const anchor=[...anchors].reverse().find(a=>a<=minute)??base
-   const nominal=resets.length?minute+Math.floor((minute-anchor)/300):base+index*301
-   const fallback=latest&&index>lastIndex?Math.max(nominal,latest.b+1+(index-lastIndex-1)*301):nominal
-   return {minute,executeMinute:slot?shiftMinute(slot.execute_at,date,settings.timezone):runtime?.slots?null:fallback,confirmed:events.length>0,provider,source:events.some(w=>w.source?.startsWith('app'))?'app':'observed',events}
-  }).filter(n=>!resets.length||n.confirmed||(runtime?.slots?n.executeMinute!==null:end-n.minute>=(settings.min_work_minutes??60)))
-  const pending=nodes.filter(n=>!n.confirmed&&n.executeMinute!==null)
-  return {provider,nodes,actual:actual.map((w,i)=>({...w,visualEnd:Math.min(w.b,actual[i+1]?.a??w.b)})),resets,cycles:nodes.filter(n=>n.confirmed).map(n=>({...n,a:n.minute,b:cycleEnd(n.minute)})),starts:pending.map(n=>n.minute),predictions:pending.map(n=>({display:n.minute,a:n.minute,b:cycleEnd(n.minute)}))}
+  // 已发生的窗口保留真实起点；不能把延迟发送或后来使用塞回理论五小时格子。
+  const confirmed:AllocationNode[]=actual.map(w=>({minute:w.a,executeMinute:null,confirmed:true,provider,source:w.source??'observed',events:[w]}))
+  let pending:AllocationNode[]
+  if(runtime?.slots){
+   pending=runtime.slots.filter(slot=>!latest||Date.parse(slot.execute_at)>Date.parse(latest.start)).map((slot,index)=>({
+    minute:Math.max(shiftMinute(slot.display_at,date,settings.timezone),latest?latest.b+index*300:-Infinity),
+    executeMinute:Math.max(shiftMinute(slot.execute_at,date,settings.timezone),latest?latest.b+1+index*301:-Infinity),
+    confirmed:false,provider,source:'planned',events:[],
+   }))
+  }else{
+   const start=latest?.b??base
+   const times=latest?Array.from({length:Math.max(0,Math.ceil((end-start)/300))},(_,index)=>start+index*300)
+    :runtime?.display_times?.length?runtime.display_times.map(t=>shiftMinute(t,date,settings.timezone))
+    :Array.from({length:Math.max(0,Math.ceil((end-base)/300))},(_,index)=>base+index*300)
+   pending=times.map((minute,index)=>({minute,executeMinute:Math.max(base+(confirmed.length+index)*301,latest?latest.b+1+index*301:minute+index),confirmed:false,provider,source:'planned',events:[]}))
+  }
+  pending=pending.filter(n=>n.minute<end&&n.executeMinute!==null&&n.executeMinute<end&&(!resets.length||end-n.minute>=(settings.min_work_minutes??60)))
+  const nodes=[...confirmed,...pending].sort((a,b)=>a.minute-b.minute)
+  const history=actual.map((w,index)=>({...w,visualEnd:Math.min(w.b,actual[index+1]?.a??w.b)}))
+  const cycles=confirmed.map((node,index)=>({...node,a:node.minute,b:history[index]!.visualEnd}))
+  return {provider,nodes,actual:history,resets,cycles,starts:pending.map(n=>n.minute),predictions:pending.map(n=>({display:n.minute,a:n.minute,b:n.minute+300}))}
  })
 }
 

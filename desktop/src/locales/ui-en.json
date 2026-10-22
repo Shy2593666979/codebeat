@@ -1,5 +1,11 @@
 {
   "5H额度开始": "5H quota starts",
+  "请求已发送": "Request sent",
+  "5H额度触发": "5H quota triggered",
+  "已触发，预计 {time} 恢复": "Triggered · estimated reset at {time}",
+  "已完成": "Completed",
+  "待开始": "Upcoming",
+  "待确认": "Unconfirmed",
   "官方重置": "Official reset",
   "额度调配已关闭": "Quota scheduling is off",
   "自动执行已暂停": "Automatic execution is paused",
