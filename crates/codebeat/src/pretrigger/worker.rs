@@ -376,9 +376,7 @@ async fn process(db: &Database, r: &mut ProbeRecord, until: chrono::DateTime<Utc
         r.state = "sent_unconfirmed".into();
         r.next_check_at = Some(r.sent_at.unwrap_or(r.attempted_at) + chrono::Duration::hours(5));
         if fresh_window(&after, Utc::now()).is_some_and(|w| w.used_percent == Some(0.0)) {
-            r.message =
-                "极简请求已成功，用量仍显示 0%；已记录真实发送，下一轮至少等待五小时再加一分钟"
-                    .into();
+            r.message = "极简请求已成功，用量仍显示 0%；已记录真实发送".into();
         } else {
             let mut settings = db.settings()?;
             settings.pretrigger.auto_trigger = false;
