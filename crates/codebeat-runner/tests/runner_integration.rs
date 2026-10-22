@@ -240,13 +240,16 @@ fn pretrigger_requires_success_and_never_repeats_even_after_plan_changes() {
         ("succeeded", "confirmed"),
         ("unverified", "failed"),
         ("failed", "failed"),
+        ("reconnected", "confirmed"),
     ] {
         let (dir, db) = probe_setup();
         for _ in 0..2 {
-            let o = probe_command(dir.path())
-                .env("CODEBEAT_FIXTURE_OUTCOME", outcome)
-                .output()
-                .unwrap();
+            let mut command = probe_command(dir.path());
+            command.env("CODEBEAT_FIXTURE_OUTCOME", outcome);
+            if expected == "failed" {
+                command.env("CODEBEAT_FIXTURE_ZERO_AFTER", "1");
+            }
+            let o = command.output().unwrap();
             assert!(o.status.success(), "{}", String::from_utf8_lossy(&o.stderr));
         }
         let records = db.pretrigger_runs().unwrap();
@@ -255,11 +258,53 @@ fn pretrigger_requires_success_and_never_repeats_even_after_plan_changes() {
         assert!(records[0].before.is_some());
         assert!(records[0].after.is_some());
         assert!(records[0].request_sent);
-        assert_eq!(std::fs::read(dir.path().join("sent-marker")).unwrap(), b"x");
+        assert_eq!(
+            std::fs::read(dir.path().join("sent-marker")).unwrap().len(),
+            if expected == "failed" { 4 } else { 1 }
+        );
         if outcome == "succeeded" {
             assert_eq!(records[0].tokens.as_ref().unwrap()["output_tokens"], 5);
         }
+        if expected == "failed" {
+            assert!(!db.settings().unwrap().pretrigger.auto_trigger);
+            assert!(records[0].message.contains("三次重试均失败"));
+        }
     }
+}
+#[test]
+fn pretrigger_succeeds_on_third_retry_and_keeps_automatic_enabled() {
+    let (dir, db) = probe_setup();
+    let result = probe_command(dir.path())
+        .env("CODEBEAT_FIXTURE_FAIL_FIRST", "3")
+        .output()
+        .unwrap();
+    assert!(
+        result.status.success(),
+        "{}",
+        String::from_utf8_lossy(&result.stderr)
+    );
+    let records = db.pretrigger_runs().unwrap();
+    assert_eq!(records.len(), 1);
+    assert_eq!(records[0].state, "confirmed", "{records:?}");
+    assert_eq!(
+        std::fs::read(dir.path().join("sent-marker")).unwrap().len(),
+        4
+    );
+    assert!(db.settings().unwrap().pretrigger.auto_trigger);
+}
+
+#[test]
+fn pretrigger_does_not_retry_if_official_window_opened_despite_cli_failure() {
+    let (dir, db) = probe_setup();
+    let result = probe_command(dir.path())
+        .env("CODEBEAT_FIXTURE_OUTCOME", "failed")
+        .output()
+        .unwrap();
+    assert!(result.status.success());
+    let records = db.pretrigger_runs().unwrap();
+    assert_eq!(records[0].state, "confirmed", "{records:?}");
+    assert_eq!(std::fs::read(dir.path().join("sent-marker")).unwrap(), b"x");
+    assert!(db.settings().unwrap().pretrigger.auto_trigger);
 }
 #[test]
 fn pretrigger_reuses_active_official_window_without_sending() {
@@ -282,6 +327,7 @@ fn excessive_cost_pauses_future_automatic_requests() {
     assert!(o.status.success());
     assert_eq!(db.pretrigger_runs().unwrap()[0].state, "cost_paused");
     assert!(!db.settings().unwrap().pretrigger.auto_trigger);
+    assert_eq!(std::fs::read(dir.path().join("sent-marker")).unwrap(), b"x");
 }
 #[test]
 fn unknown_claude_quota_never_sends_a_request() {

@@ -2,6 +2,16 @@ use serde_json::{json, Value};
 use std::io::{self, BufRead, Write};
 fn main() {
     let first = std::env::args().nth(1).unwrap_or_default();
+    if first == "--pretrigger-args" {
+        println!(
+            "{}",
+            serde_json::to_string(&codebeat_lib::providers::pretrigger_args(
+                codebeat_lib::ProviderId::Codex
+            ))
+            .unwrap()
+        );
+        return;
+    }
     if first == "--discover-codex" {
         println!(
             "{}",
@@ -46,10 +56,27 @@ fn main() {
             marker.write_all(b"x").unwrap();
         }
         eprintln!("isolated fixture stderr");
-        match std::env::var("CODEBEAT_FIXTURE_OUTCOME")
-            .unwrap_or_else(|_| "succeeded".into())
-            .as_str()
-        {
+        let mut outcome =
+            std::env::var("CODEBEAT_FIXTURE_OUTCOME").unwrap_or_else(|_| "succeeded".into());
+        if let Ok(first) = std::env::var("CODEBEAT_FIXTURE_FAIL_FIRST") {
+            let attempts = std::fs::read(std::env::var("CODEBEAT_FIXTURE_PROBE_MARKER").unwrap())
+                .unwrap()
+                .len();
+            if attempts <= first.parse::<usize>().unwrap() {
+                outcome = "failed".into();
+            }
+        }
+        match outcome.as_str() {
+            "reconnected" => {
+                println!(
+                    "{}",
+                    json!({"type":"error","message":"Reconnecting... 2/5"})
+                );
+                println!(
+                    "{}",
+                    json!({"type":"turn.completed","usage":{"output_tokens":5}})
+                );
+            }
             "succeeded" => {
                 if first == "-p" {
                     println!(
@@ -148,7 +175,11 @@ fn main() {
             }
             "account/rateLimits/read" if initialized => {
                 if let Ok(path) = std::env::var("CODEBEAT_FIXTURE_PROBE_MARKER") {
-                    let sent = std::path::Path::new(&path).exists();
+                    let mut sent = std::path::Path::new(&path).exists();
+                    if let Ok(first) = std::env::var("CODEBEAT_FIXTURE_FAIL_FIRST") {
+                        sent = std::fs::read(&path).unwrap_or_default().len()
+                            > first.parse::<usize>().unwrap();
+                    }
                     let active = std::env::var("CODEBEAT_FIXTURE_ACTIVE").is_ok();
                     let floating = std::env::var("CODEBEAT_FIXTURE_FLOATING").is_ok();
                     let zero_after = std::env::var("CODEBEAT_FIXTURE_ZERO_AFTER").is_ok();

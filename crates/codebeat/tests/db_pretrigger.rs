@@ -109,3 +109,23 @@ fn coding_allocation_upgrade_preserves_a_protection_pause() {
     assert!(settings.pretrigger_enabled && settings.pretrigger.wake);
     assert!(!settings.pretrigger.auto_trigger);
 }
+
+#[test]
+fn recent_retry_does_not_become_stale_when_the_first_attempt_is_old() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut db = Database::open(&dir.path().join("retry.db")).unwrap();
+    let now = Utc::now();
+    assert!(db
+        .claim_pretrigger(ProviderId::Codex, "retry", now - Duration::minutes(6))
+        .unwrap());
+    let mut run = db.pretrigger_runs().unwrap().remove(0);
+    run.request_sent = true;
+    run.sent_at = Some(now - Duration::seconds(30));
+    db.persist_probe_progress(&run).unwrap();
+    db.recover_stale().unwrap();
+    assert_eq!(db.pretrigger_runs().unwrap()[0].state, "running");
+    run.sent_at = Some(now - Duration::minutes(6));
+    db.persist_probe_progress(&run).unwrap();
+    db.recover_stale().unwrap();
+    assert_eq!(db.pretrigger_runs().unwrap()[0].state, "uncertain");
+}

@@ -8,6 +8,7 @@ use tokio::io::{AsyncWriteExt, BufReader};
 
 pub const PROMPT: &str =
     "Reply with exactly OK. Do not use any tools, read files, or perform any other action.";
+const MAX_REQUEST_ATTEMPTS: usize = 4;
 pub async fn tick(db: &mut Database) -> Result<()> {
     let result = tick_inner(db).await;
     if let Err(error) = &result {
@@ -288,25 +289,85 @@ async fn process(db: &Database, r: &mut ProbeRecord, until: chrono::DateTime<Utc
     r.request_sent = true;
     r.sent_at = Some(Utc::now());
     db.persist_probe_progress(r)?;
-    let sent = send(&exe, r.provider, cwd).await;
-    if let Ok(tokens) = &sent {
-        r.tokens = tokens.clone();
-    }
-    let after = crate::providers::usage(r.provider).await;
-    db.cache_usage(&after)?;
-    r.after = Some(after.clone());
-    let excessive = cost_anomaly(&before, &after);
-    if excessive || sent.is_err() {
-        let mut settings = db.settings()?;
-        settings.pretrigger.auto_trigger = false;
-        db.save_settings(&settings)?;
-        if excessive {
+    // 同一条已抢占的记录内执行首次请求和三次重试，不另建预留。
+    // 每次失败后先核实官方窗口，避免请求实际成功却因连接中断重复消耗。
+    let mut attempt = 0;
+    let after = loop {
+        attempt += 1;
+        r.sent_at = Some(Utc::now());
+        r.message = format!("正在执行轻量请求，第 {attempt}/{MAX_REQUEST_ATTEMPTS} 次");
+        db.persist_probe_progress(r)?;
+        decisions::log(
+            db,
+            Some(r.provider),
+            &format!(
+                "request_attempt:{attempt}/{MAX_REQUEST_ATTEMPTS}:{}",
+                r.slot
+            ),
+            None,
+            None,
+        );
+        let sent = send(&exe, r.provider, cwd).await;
+        if let Ok(tokens) = &sent {
+            r.tokens = tokens.clone();
+        }
+        let after = crate::providers::usage(r.provider).await;
+        db.cache_usage(&after)?;
+        r.after = Some(after.clone());
+        if cost_anomaly(&before, &after) {
+            let mut settings = db.settings()?;
+            settings.pretrigger.auto_trigger = false;
+            db.save_settings(&settings)?;
             r.state = "cost_paused".into();
             r.message = "触发额度消耗超过保护阈值，已暂停未来自动轻量触发".into();
             return Ok(());
         }
-        sent?;
-    }
+        match sent {
+            Ok(_) => break after,
+            Err(error) => {
+                let message = crate::providers::redact(&error.to_string());
+                decisions::log(
+                    db,
+                    Some(r.provider),
+                    &format!("request_failed:{attempt}:{message}"),
+                    None,
+                    Some(&after),
+                );
+                if let Some(reset) = active_reset(&after, Utc::now()) {
+                    r.state = "confirmed".into();
+                    r.message = "请求未确认完成，但官方窗口已经开启，停止额外重试".into();
+                    r.next_check_at = Some(reset);
+                    return Ok(());
+                }
+                if attempt == MAX_REQUEST_ATTEMPTS {
+                    let mut settings = db.settings()?;
+                    settings.pretrigger.auto_trigger = false;
+                    db.save_settings(&settings)?;
+                    bail!("PRETRIGGER_RETRIES_EXHAUSTED: 首次执行及三次重试均失败；最后错误：{message}");
+                }
+                if exhausted(&after, Utc::now()) || fresh_window(&after, Utc::now()).is_none() {
+                    r.state = "blocked".into();
+                    r.message = "重试前无法确认可用额度，停止本轮请求".into();
+                    return Ok(());
+                }
+                tokio::time::sleep(Duration::from_secs(2_u64.pow(attempt as u32))).await;
+                let settings = db.settings()?;
+                if !settings.pretrigger_enabled
+                    || !settings.pretrigger.auto_trigger
+                    || settings.pretrigger.mode == "save"
+                    || settings.paused
+                    || settings.paused_providers.contains(&r.provider)
+                    || !settings.pretrigger.providers.contains(&r.provider)
+                    || Utc::now() >= until
+                    || db.upcoming_real_task(r.provider, Utc::now())?
+                {
+                    r.state = "skipped".into();
+                    r.message = "重试前计划已暂停、过期或有真实任务，停止本轮请求".into();
+                    return Ok(());
+                }
+            }
+        }
+    };
     if let Some(reset) = active_reset(&after, Utc::now()) {
         r.state = "confirmed".into();
         r.message = format!("请求成功，官方五小时窗口恢复时间：{}", reset.to_rfc3339());
@@ -414,6 +475,8 @@ async fn send(
                 }
                 match crate::providers::classify_event(&event) {
                     Some("succeeded") => success = true,
+                    // Codex 重连也会发出 error；最终完成事件才决定请求成功。
+                    Some("failed") if event["type"] == "error" => {}
                     Some("failed" | "blocked_approval") => failed = true,
                     _ => {}
                 }
@@ -422,7 +485,7 @@ async fn send(
         let status = child.wait().await?;
         drain.await??;
         if !status.success() || !success || failed {
-            bail!("PRETRIGGER_UNVERIFIED: 未收到成功完成事件，停止本轮重试");
+            bail!("PRETRIGGER_UNVERIFIED: 本次请求未收到成功完成事件");
         }
         Ok(tokens)
     })
@@ -433,7 +496,7 @@ async fn send(
             crate::tasks::execution::stop_tree(&mut child).await;
             match other {
                 Ok(Err(e)) => Err(e),
-                _ => bail!("PRETRIGGER_TIMEOUT: 请求超时，停止本轮重试"),
+                _ => bail!("PRETRIGGER_TIMEOUT: 本次请求超时"),
             }
         }
     }

@@ -583,6 +583,8 @@ pub fn execution_args(r: &CreateTaskRequest, fork: bool) -> Vec<String> {
     }
 }
 pub fn pretrigger_args(id: ProviderId) -> Vec<String> {
+    // 轻量触发独立使用官方 HTTPS 连接，不读取或改写用户的提供方配置。
+    // 使用独立 ID，避免覆盖 Codex 保留的内置 openai 提供方。
     let args: Vec<&str> = match id {
         ProviderId::Codex => vec![
             "exec",
@@ -592,6 +594,10 @@ pub fn pretrigger_args(id: ProviderId) -> Vec<String> {
             "--skip-git-repo-check",
             "--sandbox",
             "read-only",
+            "-c",
+            "model_provider=\"codebeat_http\"",
+            "-c",
+            "model_providers.codebeat_http={name=\"CodeBeat HTTPS\",wire_api=\"responses\",requires_openai_auth=true,supports_websockets=false}",
             "-c",
             "approval_policy=\"never\"",
             "-c",

@@ -244,7 +244,9 @@ impl Database {
 
     pub fn recover_stale(&self) -> Result<usize> {
         for mut run in self.pretrigger_runs()? {
-            if run.state == "running" && run.attempted_at < Utc::now() - Duration::minutes(5) {
+            if run.state == "running"
+                && run.sent_at.unwrap_or(run.attempted_at) < Utc::now() - Duration::minutes(5)
+            {
                 run.state = "uncertain".into();
                 run.message = "上次执行中断，结果未知；本轮不重复发送".into();
                 run.finished_at = Some(Utc::now());
