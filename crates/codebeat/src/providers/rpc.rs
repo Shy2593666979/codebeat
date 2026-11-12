@@ -67,7 +67,7 @@ impl RpcClient {
         };
         rpc.request(
             "initialize",
-            json!({"clientInfo":{"name":"codebeat","title":"codebeat","version":"0.1.0"}}),
+            json!({"clientInfo":{"name":"codebeat","title":"codebeat","version":"1.0.0"}}),
         )
         .await?;
         rpc.send(json!({"method":"initialized","params":{}}))
